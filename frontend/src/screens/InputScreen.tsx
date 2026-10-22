@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowRight, Sparkles, Mic, Loader2, ShieldCheck, AlertOctagon, Terminal, X, Zap } from 'lucide-react';
+import React from 'react';
+import { ArrowRight, Terminal, Shield, Folder, FileText, Cpu, Archive, Trash2, Search, AlertCircle, CornerDownLeft } from 'lucide-react';
 import { PRESET_SCENARIOS, PresetScenario } from '../services/mockData';
 import { ClarificationCard } from '../components/ClarificationCard';
 
@@ -26,55 +26,66 @@ export const InputScreen: React.FC<InputScreenProps> = ({
   dryRun,
   setDryRun,
 }) => {
-  const [isListening, setIsListening] = useState(false);
-
-  const handleVoiceToggle = () => {
-    if (!isListening) {
-      setIsListening(true);
-      setTimeout(() => {
-        setPrompt('Clean up files in ~/Downloads older than 90 days');
-        setIsListening(false);
-      }, 1800);
-    } else {
-      setIsListening(false);
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim()) {
+      e.preventDefault();
       onSubmit(prompt);
     }
   };
 
-  const handlePresetClick = (scenario: PresetScenario) => {
+  const handleSelectScenario = (scenario: PresetScenario) => {
     setPrompt(scenario.prompt);
     onSubmit(scenario.prompt);
   };
 
-  const quickPills = [
-    'Clean ~/Downloads older than 90d',
-    'Move PDFs from Downloads to Documents/PDFs',
-    'Kill runaway node.exe process',
-    'Delete C:\\Windows\\System32 (Security Test)',
+  const capabilities = [
+    {
+      icon: <Trash2 size={14} />,
+      title: 'DeleteFilesMatching',
+      desc: 'Pattern-based deletion with mandatory age filters and soft-delete trash staging.',
+    },
+    {
+      icon: <Folder size={14} />,
+      title: 'MoveFilesMatching',
+      desc: 'Batch file reorganization across directory boundaries with automatic inverse logging.',
+    },
+    {
+      icon: <Cpu size={14} />,
+      title: 'KillProcess',
+      desc: 'Targeted process termination by PID or name. Protected system binaries strictly blocked.',
+    },
+    {
+      icon: <Archive size={14} />,
+      title: 'CompressDirectory',
+      desc: 'Archive folders to zip archives. Deleting source directory requires confirmation.',
+    },
+    {
+      icon: <Search size={14} />,
+      title: 'FindLargeFiles',
+      desc: 'Read-only storage telemetry finding items exceeding configurable megabyte caps.',
+    },
+    {
+      icon: <Shield size={14} />,
+      title: 'Pure Policy Engine',
+      desc: 'Zero-I/O safety guarantees rejecting path traversals (..) and root escalations.',
+    },
   ];
 
   return (
     <div className="view-container">
-      {/* Editorial Header */}
+      {/* Title & Overview */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <span className="badge-tag badge-safe">
-            <ShieldCheck size={13} /> Strict Separation Architecture
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span className="badge-tag badge-accent">
+            <Terminal size={11} /> Natural Language Orchestration
           </span>
-          {dryRun && (
-            <span className="badge-tag badge-warn">
-              <AlertOctagon size={13} /> Simulation Sandbox
-            </span>
-          )}
+          <span className="badge-tag">
+            Target OS: Windows 11
+          </span>
         </div>
-        <h1>Elevated Task Orchestration</h1>
+        <h1>Command Studio</h1>
         <p className="lead">
-          Type an instruction in plain English. Sentinel synthesizes a closed-vocabulary action schema and validates it through a pure, zero-I/O policy engine before any elevation occurs.
+          Describe an elevated system operation in plain English. The AI synthesizes a strictly-typed, closed ActionPlan validated by Sentinel&apos;s pure Rust policy engine before any privileged token is dispatched.
         </p>
       </div>
 
@@ -87,167 +98,114 @@ export const InputScreen: React.FC<InputScreenProps> = ({
         />
       )}
 
-      {/* Quick Pills Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--fg-dim)', fontFamily: 'var(--font-mono)' }}>
-          Quick prompts:
-        </span>
-        {quickPills.map((pill) => (
-          <button
-            key={pill}
-            type="button"
-            className="btn-secondary"
-            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20 }}
-            onClick={() => setPrompt(pill)}
-          >
-            {pill}
-          </button>
-        ))}
-      </div>
-
-      {/* The Central Command Input Box — High Contrast & Impossible to Miss */}
-      <div className="main-input-card">
-        <div className="input-card-header">
+      {/* Primary Command Input Component */}
+      <div className="command-card">
+        <div className="command-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Terminal size={15} color="var(--accent)" />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>
-              Natural Language Command Input
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono)' }}>
+              $ sentinel plan
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              className={`badge-tag ${dryRun ? 'badge-safe' : 'badge-warn'}`}
+              onClick={() => setDryRun(!dryRun)}
+              style={{ cursor: 'pointer', border: '1px solid currentColor' }}
+            >
+              {dryRun ? 'Mode: Dry-Run Simulation' : 'Mode: Live Execution'}
+            </button>
             {prompt.length > 0 && (
               <button
                 type="button"
-                className="clear-input-btn"
+                className="badge-tag badge-muted"
                 onClick={() => setPrompt('')}
-                title="Clear input"
+                style={{ cursor: 'pointer' }}
               >
-                <X size={13} /> Clear
+                Clear
               </button>
             )}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--fg-dim)' }}>
-              {prompt.length} characters
-            </span>
           </div>
         </div>
 
         <textarea
-          className="main-textarea"
-          placeholder="Type your command here (e.g., Clean up files in Downloads older than 90 days, or move all PDFs to Documents/PDFs)..."
+          className="command-textarea"
+          rows={3}
+          placeholder="e.g. Show me all files in downloads older than 1 year, or move loose PDFs to Documents/PDFs..."
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
-          rows={4}
           autoFocus
         />
 
-        <div className="input-card-footer">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              type="button"
-              className={`btn-secondary ${isListening ? 'badge-accent' : ''}`}
-              onClick={handleVoiceToggle}
-              title="Voice dictation"
-              style={{
-                borderColor: isListening ? 'var(--accent)' : undefined,
-                color: isListening ? 'var(--accent)' : undefined,
-                padding: '8px 14px',
-              }}
-            >
-              {isListening ? (
-                <div className="voice-visualizer">
-                  <div className="soundwave-bar" />
-                  <div className="soundwave-bar" />
-                  <div className="soundwave-bar" />
-                  <div className="soundwave-bar" />
-                  <div className="soundwave-bar" />
-                </div>
-              ) : (
-                <Mic size={14} />
-              )}
-              <span>{isListening ? 'Listening...' : 'Voice Input'}</span>
-            </button>
+        <div className="command-footer">
+          <div className="command-keyboard-hint">
+            Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to synthesize plan
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--fg-dim)', fontFamily: 'var(--font-mono)' }}>
-              <kbd style={{ background: 'var(--bg-code)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>Ctrl</kbd> + <kbd style={{ background: 'var(--bg-code)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>Enter</kbd>
-            </span>
-
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={isLoading || !prompt.trim()}
-              onClick={() => onSubmit(prompt)}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 size={16} className="spin-icon" />
-                  <span>Synthesizing Schema...</span>
-                </>
-              ) : (
-                <>
-                  <span>Generate Action Plan</span>
-                  <ArrowRight size={15} />
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!prompt.trim() || isLoading}
+            onClick={() => onSubmit(prompt)}
+          >
+            {isLoading ? (
+              <span>Evaluating Policy...</span>
+            ) : (
+              <>
+                <span>Synthesize Action Plan</span>
+                <CornerDownLeft size={13} />
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Preset Benchmarks */}
+      {/* Quick Verified Scenarios */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Sparkles size={17} color="var(--accent)" />
-            <h2>Interactive Safety Benchmarks</h2>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, fontFamily: 'var(--font-mono)' }}>
+          Verified Test Scenarios
+        </div>
+        <div className="pills-container">
+          {PRESET_SCENARIOS.map((scenario) => (
+            <button
+              key={scenario.id}
+              type="button"
+              className="pill-btn"
+              onClick={() => handleSelectScenario(scenario)}
+              title={scenario.description}
+            >
+              <span style={{ color: scenario.badgeColor === 'danger' ? 'var(--danger-contrast)' : scenario.badgeColor === 'warn' ? 'var(--warn-contrast)' : 'var(--fg-primary)' }}>
+                {scenario.prompt}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Closed Action Architecture Section */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'var(--font-mono)' }}>
+            Closed Execution Vocabulary
           </div>
-          <span style={{ fontSize: 12, color: 'var(--fg-dim)', fontFamily: 'var(--font-mono)' }}>
-            Click to auto-populate and run
+          <span style={{ fontSize: 11.5, color: 'var(--fg-muted)' }}>
+            Raw shell commands (<code style={{ fontFamily: 'var(--font-mono)', color: 'var(--danger-contrast)' }}>bash / cmd.exe</code>) are architecturally excluded
           </span>
         </div>
 
-        <div className="presets-grid">
-          {PRESET_SCENARIOS.map((scenario) => {
-            const badgeClass =
-              scenario.badgeColor === 'danger'
-                ? 'badge-danger'
-                : scenario.badgeColor === 'warn'
-                ? 'badge-warn'
-                : scenario.badgeColor === 'info'
-                ? 'badge-info'
-                : 'badge-safe';
-
-            return (
-              <div
-                key={scenario.id}
-                className="preset-card"
-                onClick={() => handlePresetClick(scenario)}
-              >
-                <div className="preset-header">
-                  <span className="preset-title">{scenario.title}</span>
-                  <span className={`badge-tag ${badgeClass}`}>{scenario.badge}</span>
-                </div>
-                <div className="preset-desc">{scenario.description}</div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--fg-muted)',
-                    marginTop: 4,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  &ldquo;{scenario.prompt}&rdquo;
-                </div>
+        <div className="capabilities-grid">
+          {capabilities.map((c, i) => (
+            <div key={i} className="capability-card">
+              <div className="capability-card-title">
+                <span style={{ color: 'var(--accent)' }}>{c.icon}</span>
+                <code>{c.title}</code>
               </div>
-            );
-          })}
+              <div className="capability-card-desc">{c.desc}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

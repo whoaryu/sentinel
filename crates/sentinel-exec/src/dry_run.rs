@@ -39,9 +39,10 @@ impl PrivilegedExecutor for DryRunExecutor {
     fn dry_run_action(&self, action: &Action) -> Result<DryRunResult, ExecError> {
         match action {
             Action::DeleteFile { path, reason } => {
+                let path = sentinel_core::expand_tilde_path(path);
                 let exists = path.exists();
                 let size = if exists {
-                    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
                 } else {
                     0
                 };
@@ -66,12 +67,13 @@ impl PrivilegedExecutor for DryRunExecutor {
                 pattern,
                 reason,
             } => {
-                let (count, bytes, matched_details) = scan_matching_files(root, pattern.as_deref(), *older_than_days);
+                let expanded_root = sentinel_core::expand_tilde_path(root);
+                let (count, bytes, matched_details) = scan_matching_files(&expanded_root, pattern.as_deref(), *older_than_days);
                 Ok(DryRunResult {
                     message: format!(
                         "Would soft-delete {} files in '{}' matching pattern '{:?}' (older than {:?} days), freeing ~{:.2} MB. Reason: {}",
                         count,
-                        root.display(),
+                        expanded_root.display(),
                         pattern,
                         older_than_days,
                         bytes as f64 / 1_048_576.0,
@@ -341,21 +343,23 @@ pub fn scan_matching_files(
     let mut bytes = 0u64;
     let mut matched = Vec::new();
 
-    if !root.exists() {
-        return (0, 0, matched);
+    let expanded_root = sentinel_core::expand_tilde_path(root);
+    if !expanded_root.exists() {
+        return (0, 0, vec!["Directory does not exist on this system".to_string()]);
     }
 
     let glob_pat = pattern.and_then(|p| Pattern::new(p).ok());
     let now = SystemTime::now();
 
-    for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+    // Limit depth to 3 and cap total scanned files for performance
+    for entry in WalkDir::new(&expanded_root).max_depth(3).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
         }
 
         let file_name = entry.file_name().to_string_lossy();
         if let Some(ref pat) = glob_pat {
-            if !pat.matches(&file_name) {
+            if pat.as_str() != "*" && !pat.matches(&file_name) {
                 continue;
             }
         }
@@ -368,16 +372,51 @@ pub fn scan_matching_files(
                         if age_days < days as u64 {
                             continue;
                         }
+                        // Matched — record with human-readable info
+                        let file_size = meta.len();
+                        count += 1;
+                        bytes += file_size;
+
+                        if matched.len() < 50 {
+                            let size_str = if file_size >= 1_048_576 {
+                                format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+                            } else if file_size >= 1024 {
+                                format!("{:.0} KB", file_size as f64 / 1024.0)
+                            } else {
+                                format!("{} B", file_size)
+                            };
+                            matched.push(format!(
+                                "{} — {} — {} days old",
+                                entry.path().display(),
+                                size_str,
+                                age_days
+                            ));
+                        }
+                        continue;
                     }
                 }
             }
         }
 
+        // No age filter — match all
         let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
         count += 1;
         bytes += file_size;
-        if matched.len() < 30 {
-            matched.push(format!("{} ({} bytes)", entry.path().display(), file_size));
+        if matched.len() < 50 {
+            let size_str = if file_size >= 1_048_576 {
+                format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+            } else if file_size >= 1024 {
+                format!("{:.0} KB", file_size as f64 / 1024.0)
+            } else {
+                format!("{} B", file_size)
+            };
+            matched.push(format!("{} — {}", entry.path().display(), size_str));
+        }
+
+        // Safety cap to avoid scanning millions of files
+        if count >= 500 {
+            matched.push(format!("... and more (scan capped at 500 matches)"));
+            break;
         }
     }
 

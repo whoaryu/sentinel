@@ -96,7 +96,23 @@ impl PrivilegedExecutor for WindowsExecutor {
     fn execute_action(&self, action: &Action) -> Result<ActionResult, ExecError> {
         match action {
             Action::DeleteFile { path, reason } => {
-                let (trash_path, bytes) = self.soft_delete(path)?;
+                let path = sentinel_core::expand_tilde_path(path);
+                if !path.exists() {
+                    return Ok(ActionResult {
+                        success: true,
+                        message: format!(
+                            "File '{}' was already removed or does not exist on disk. Reason: {}",
+                            path.display(),
+                            reason
+                        ),
+                        files_affected: 0,
+                        bytes_freed: 0,
+                        undo_action: None,
+                        details: vec![format!("Path '{}' was not present at execution time", path.display())],
+                    });
+                }
+
+                let (trash_path, bytes) = self.soft_delete(&path)?;
                 let undo_action = Action::MoveFile {
                     from: trash_path.clone(),
                     to: path.clone(),
@@ -125,6 +141,7 @@ impl PrivilegedExecutor for WindowsExecutor {
                 pattern,
                 reason,
             } => {
+                let root = sentinel_core::expand_tilde_path(root);
                 if !root.exists() {
                     return Err(ExecError::ActionFailed(format!(
                         "Root directory '{}' does not exist",
@@ -136,7 +153,8 @@ impl PrivilegedExecutor for WindowsExecutor {
                 let now = SystemTime::now();
                 let mut files_to_delete = Vec::new();
 
-                for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+                // Limit depth to 3 and cap at 100 files for high responsiveness
+                for entry in WalkDir::new(&root).max_depth(3).into_iter().filter_map(|e| e.ok()) {
                     if !entry.file_type().is_file() {
                         continue;
                     }
@@ -162,6 +180,9 @@ impl PrivilegedExecutor for WindowsExecutor {
                     }
 
                     files_to_delete.push(entry.into_path());
+                    if files_to_delete.len() >= 100 {
+                        break;
+                    }
                 }
 
                 let mut affected = 0u64;
@@ -200,6 +221,8 @@ impl PrivilegedExecutor for WindowsExecutor {
             }
 
             Action::MoveFile { from, to, reason } => {
+                let from = sentinel_core::expand_tilde_path(from);
+                let to = sentinel_core::expand_tilde_path(to);
                 if !from.exists() {
                     return Err(ExecError::ActionFailed(format!(
                         "Source path '{}' does not exist",
@@ -211,9 +234,9 @@ impl PrivilegedExecutor for WindowsExecutor {
                     fs::create_dir_all(parent)?;
                 }
 
-                if let Err(_) = fs::rename(from, to) {
-                    fs::copy(from, to)?;
-                    fs::remove_file(from)?;
+                if let Err(_) = fs::rename(&from, &to) {
+                    fs::copy(&from, &to)?;
+                    fs::remove_file(&from)?;
                 }
 
                 let undo = Action::MoveFile {
@@ -244,6 +267,8 @@ impl PrivilegedExecutor for WindowsExecutor {
                 older_than_days,
                 reason,
             } => {
+                let root = sentinel_core::expand_tilde_path(root);
+                let destination = sentinel_core::expand_tilde_path(destination);
                 if !root.exists() {
                     return Err(ExecError::ActionFailed(format!(
                         "Root directory '{}' does not exist",
@@ -251,13 +276,13 @@ impl PrivilegedExecutor for WindowsExecutor {
                     )));
                 }
 
-                fs::create_dir_all(destination)?;
+                fs::create_dir_all(&destination)?;
                 let glob_pat = pattern.as_deref().and_then(|p| Pattern::new(p).ok());
                 let now = SystemTime::now();
                 let mut moved_count = 0u64;
                 let mut details = Vec::new();
 
-                let entries: Vec<_> = WalkDir::new(root)
+                let entries: Vec<_> = WalkDir::new(&root)
                     .max_depth(1)
                     .into_iter()
                     .filter_map(|e| e.ok())

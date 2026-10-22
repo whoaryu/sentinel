@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, ShieldCheck, Search, ChevronRight, ChevronDown, CheckCircle, XCircle, AlertTriangle, Code } from 'lucide-react';
+import { Database, ShieldCheck, Search, ChevronRight, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Code, Terminal } from 'lucide-react';
 import { AuditPlanRecord } from '../types/sentinel';
 import { getStoredAuditRecords } from '../services/api';
 
@@ -22,150 +22,148 @@ export const AuditScreen: React.FC = () => {
     return true;
   });
 
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
   return (
     <div className="view-container">
+      {/* View Header */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <span className="badge-tag badge-accent">
-            <ShieldCheck size={12} /> SQLite Append-Only
+            <Database size={11} /> SQLite Append-Only Storage
           </span>
-          <span className="badge-tag badge-muted">
-            Tamper-Evident DB Triggers
+          <span className="badge-tag">
+            Engine: WAL Mode
           </span>
         </div>
-        <h1>Audit Trail & Event Log</h1>
+
+        <h1>Immutable Audit Trail</h1>
         <p className="lead">
-          Every proposed action plan, policy validation decision, and elevated execution outcome is permanently committed. Database triggers strictly prohibit UPDATE and DELETE operations.
+          Every proposed action plan, policy validation decision, and elevated execution outcome is permanently committed. SQL database triggers strictly prohibit UPDATE and DELETE operations.
         </p>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {(['All', 'Executed', 'Denied', 'Simulated'] as const).map((status) => (
+      {/* Filter & Search Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div className="pills-container">
+          {(['All', 'Executed', 'Denied', 'Simulated'] as const).map((tab) => (
             <button
-              key={status}
-              className={`btn-secondary ${filter === status ? 'badge-accent' : ''}`}
+              key={tab}
+              type="button"
+              className={`pill-btn ${filter === tab ? 'active' : ''}`}
+              onClick={() => setFilter(tab)}
               style={{
-                fontSize: 13,
-                padding: '6px 14px',
-                borderColor: filter === status ? 'var(--accent)' : undefined,
-                color: filter === status ? 'var(--accent)' : undefined,
+                backgroundColor: filter === tab ? 'var(--bg-surface-hover)' : undefined,
+                color: filter === tab ? 'var(--fg-primary)' : undefined,
+                borderColor: filter === tab ? 'var(--border-muted)' : undefined,
+                fontWeight: filter === tab ? 600 : 500,
               }}
-              onClick={() => setFilter(status)}
             >
-              {status}
+              {tab}
             </button>
           ))}
         </div>
 
-        <div className="search-input-wrapper">
-          <Search size={15} className="search-icon" />
+        <div style={{ position: 'relative', width: 260 }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
           <input
             type="text"
-            className="search-input"
-            placeholder="Search prompt or ID..."
+            className="input-field"
+            placeholder="Search plans or keywords..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: 30, fontSize: 12 }}
           />
         </div>
       </div>
 
-      {/* Audit Log Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Audit Table */}
+      <div className="audit-table-wrapper">
         <table className="audit-table">
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>Request Prompt</th>
+              <th style={{ width: 40 }}></th>
+              <th>Plan ID</th>
+              <th>Original Intent</th>
               <th>Status</th>
               <th>Actions</th>
-              <th>Details</th>
+              <th>Committed</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: 'var(--fg-dim)' }}>
-                  No audit entries found matching the filter.
+                <td colSpan={6} style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--fg-muted)' }}>
+                  No audit trail records matching criteria.
                 </td>
               </tr>
             ) : (
-              filtered.map((r) => {
-                const isExpanded = expandedId === r.id;
-                const statusBadge =
-                  r.status === 'Executed'
+              filtered.map((record) => {
+                const isExpanded = expandedId === record.id;
+                const statusColor =
+                  record.status === 'Executed'
                     ? 'badge-safe'
-                    : r.status === 'Denied'
+                    : record.status === 'Denied'
                     ? 'badge-danger'
-                    : r.status === 'Simulated'
-                    ? 'badge-warn'
-                    : 'badge-muted';
+                    : 'badge-warn';
 
                 return (
-                  <React.Fragment key={r.id}>
-                    <tr
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                    >
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-dim)' }}>
-                        {r.created_at ? new Date(r.created_at).toLocaleString() : 'Recent'}
+                  <React.Fragment key={record.id}>
+                    <tr onClick={() => toggleExpand(record.id)} style={{ cursor: 'pointer' }}>
+                      <td>
+                        {isExpanded ? <ChevronDown size={14} color="var(--fg-muted)" /> : <ChevronRight size={14} color="var(--fg-muted)" />}
                       </td>
-                      <td style={{ fontWeight: 600, color: 'var(--fg)', maxWidth: 300 }}>
-                        {r.request}
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-primary)' }}>
+                        {record.id.slice(0, 10)}
+                      </td>
+                      <td style={{ fontWeight: 500, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {record.request}
                       </td>
                       <td>
-                        <span className={`badge-tag ${statusBadge}`}>
-                          {r.status === 'Executed' && <CheckCircle size={11} />}
-                          {r.status === 'Denied' && <XCircle size={11} />}
-                          {r.status === 'Simulated' && <AlertTriangle size={11} />}
-                          {r.status}
+                        <span className={`badge-tag ${statusColor}`}>
+                          {record.status}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                        {r.actions_count || 1} op(s)
+                      <td style={{ fontFamily: 'var(--font-mono)' }}>
+                        {record.actions_count ?? 1} action(s)
                       </td>
-                      <td>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: 12 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedId(isExpanded ? null : r.id);
-                          }}
-                        >
-                          <Code size={13} />
-                          {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                        </button>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--fg-muted)' }}>
+                        {new Date(record.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
+                        {new Date(record.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
                     </tr>
 
-                    {/* Expandable JSON Diff Row */}
+                    {/* Expandable JSON detail row */}
                     {isExpanded && (
                       <tr>
-                        <td colSpan={5} style={{ background: 'var(--bg-code)', padding: '18px 22px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-dim)' }}>
-                              <span style={{ color: 'var(--fg)' }}>Record ID: {r.id}</span>
-                              <span className="badge-tag badge-safe" style={{ fontSize: 11 }}>
-                                Hash: SHA-256:{r.id.slice(0, 8)}...8f0b (Tamper-Proof)
+                        <td colSpan={6} style={{ background: 'var(--bg-code)', padding: 18 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                                Raw Immutable Record (SQLite Payload)
+                              </span>
+                              <span className="badge-tag">
+                                Trigger: no_update_plans
                               </span>
                             </div>
 
                             <pre
                               style={{
-                                background: 'var(--bg)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 8,
-                                padding: '14px 16px',
-                                fontSize: 12,
+                                margin: 0,
+                                padding: 14,
+                                borderRadius: 'var(--radius-sm)',
+                                background: 'var(--bg-canvas)',
+                                border: '1px solid var(--border-hairline)',
                                 fontFamily: 'var(--font-mono)',
-                                color: 'var(--accent)',
-                                maxHeight: 280,
-                                overflowY: 'auto',
+                                fontSize: 11.5,
+                                color: 'var(--fg-primary)',
+                                overflowX: 'auto',
+                                maxHeight: 240,
                               }}
                             >
-                              <code>{r.plan_json}</code>
+                              {record.plan_json}
                             </pre>
                           </div>
                         </td>

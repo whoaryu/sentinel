@@ -129,6 +129,7 @@ export interface ActionRuntimeState {
   bytesFreed?: number;
   error?: string;
   undoAction?: Action;
+  details?: string[];
 }
 
 export interface ExecutionEvent {
@@ -142,6 +143,7 @@ export interface ExecutionEvent {
   total_actions?: number;
   succeeded?: number;
   failed?: number;
+  details?: string[];
   timestamp: string;
 }
 

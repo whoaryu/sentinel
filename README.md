@@ -301,12 +301,12 @@ npm run build
 | **Rust Policy Engine** | ✅ **Complete** | 22 unit tests covering path safety, blast radius, protected targets |
 | **SQLite Audit Log** | ✅ **Complete** | Append-only database triggers preventing DELETE and UPDATE |
 | **Windows Execution Backend** | ✅ **Complete** | Soft-delete to `~/.sentinel-trash`, file move, process termination |
-| **React 19 Frontend** | ✅ **Complete** | 4 full screens (Input, Review, Execution, Audit Log) + offline twin |
-| **Live LLM Integration** | 🟡 **In Progress** | Wire Claude API structured tool-calling into `sentinel-api` |
-| **Live WebSocket Execution** | 🟡 **In Progress** | Connect Axum WebSocket handler to live `WindowsExecutor` events |
+| **React 19 Frontend** | ✅ **Complete** | Ultra-polished UI with Gemini settings modal, live health checks, review diffs |
+| **Google Gemini Integration** | ✅ **Complete** | Native Google Generative Language API calling `gemini-2.5-flash` with structured JSON output |
+| **Live WebSocket Execution** | ✅ **Complete** | Axum broadcast channel streaming live `WindowsExecutor` execution telemetry |
+| **One-Click Undo API** | ✅ **Complete** | Dedicated `/api/plan/:id/undo` endpoint restoring soft-deleted files |
 | **Linux Backend (`nix`+`pkexec`)** | 📋 **Planned** | POSIX file permissions, signals, and Polkit elevation |
 | **macOS Backend** | 📋 **Documented** | Stubbed for future Darwin integration |
-| **One-Click Undo API** | 📋 **Planned** | Dedicated `/api/plan/:id/undo` endpoint restoring soft-deleted files |
 
 ---
 

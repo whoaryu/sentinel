@@ -251,12 +251,34 @@ impl PolicyEngine {
             }
         }
 
+        // Expand ~ to allowed user home root
+        let expanded = if path_str.starts_with('~') {
+            if let Some(first_root) = self.config.allowed_roots.first() {
+                let remainder = path_str.trim_start_matches('~').trim_start_matches(['/', '\\']);
+                first_root.join(remainder)
+            } else {
+                sentinel_core::expand_tilde_path(path)
+            }
+        } else {
+            path.to_path_buf()
+        };
+        let path = &expanded;
+
         // Rule 2: Deny outside allowed roots if allowed roots are specified
         if !self.config.allowed_roots.is_empty() {
             let normalized_path = normalize_path(path);
             let is_inside_allowed = self.config.allowed_roots.iter().any(|root| {
                 let norm_root = normalize_path(root);
-                normalized_path.starts_with(&norm_root)
+                #[cfg(windows)]
+                {
+                    let p_str = normalized_path.to_string_lossy().to_lowercase().replace('/', "\\");
+                    let r_str = norm_root.to_string_lossy().to_lowercase().replace('/', "\\");
+                    p_str.starts_with(&r_str)
+                }
+                #[cfg(not(windows))]
+                {
+                    normalized_path.starts_with(&norm_root)
+                }
             });
 
             if !is_inside_allowed {

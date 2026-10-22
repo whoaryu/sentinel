@@ -194,8 +194,9 @@ function checkPathSafety(path: string, isDeletion: boolean): string | null {
 
   // Rule 3: Depth check for deletions
   if (isDeletion) {
-    const segments = norm.split('/').filter((s) => s.length > 0 && s !== '.');
-    // On Windows, drive letter like "C:" is first segment
+    // If path starts with ~, ~ already represents user home (e.g. C:/Users/name, 2 segments)
+    const effectiveNorm = norm.startsWith('~/') ? 'Users/User/' + norm.slice(2) : norm;
+    const segments = effectiveNorm.split('/').filter((s) => s.length > 0 && s !== '.');
     if (segments.length < 3) {
       return `Cannot delete shallow system path '${path}' (minimum 3 path segments required for safe deletion)`;
     }
