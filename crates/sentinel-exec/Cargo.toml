@@ -1,0 +1,21 @@
+[package]
+name = "sentinel-exec"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sentinel-core = { path = "../sentinel-core" }
+sentinel-policy = { path = "../sentinel-policy" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+walkdir = "2.5"
+glob = "0.3"
+zip = "2.2"
+sysinfo = "0.32"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3.13"

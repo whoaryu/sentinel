@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/sentinel-core",
+    "crates/sentinel-policy",
+    "crates/sentinel-exec",
+    "crates/sentinel-api",
+    "crates/sentinel-cli",
+]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2.0"
+schemars = { version = "0.8", features = ["chrono", "uuid1"] }
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

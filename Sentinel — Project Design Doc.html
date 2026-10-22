@@ -1,0 +1,197 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}</style><style>:root{color-scheme:light dark;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}}:root[data-theme="dark"]{color-scheme:dark;--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}:root[data-theme="light"]{color-scheme:light}@media print{:root,:root[data-theme="dark"]{color-scheme:light;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}}body{background:var(--md-bg);color:var(--md-text);max-width:720px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:10px;font:14px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif;overflow-wrap:break-word}body>:first-child{margin-top:0}h1,h2,h3,h4,h5,h6{margin:6px 0 0;line-height:1.25;font-weight:600;text-wrap:balance}h1{font-size:1.35em}h2{font-size:1.15em;color:var(--md-muted)}h3,h4,h5,h6{font-size:1em}p,ul,ol,blockquote,table,pre,hr{margin:0}strong{font-weight:600}a{color:var(--md-link);text-decoration:none}a:hover{text-decoration:underline}ul,ol{display:flex;flex-direction:column;gap:6px;padding-left:22px}ul{list-style:disc}ol{list-style:decimal}:is(li,td,th)>*+:is(p,ul,ol,blockquote){margin-top:6px}blockquote{display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--md-rule);padding-left:10px;color:var(--md-muted)}:not(pre)>code{background:var(--md-fill);padding:1px 3px;border-radius:4px;font:.92em 'SF Mono',ui-monospace,Menlo,Consolas,monospace}a>code{background:none;color:inherit}pre{background:var(--md-fill);padding:10px 12px;border-radius:6px;overflow-x:auto;font:12px/1.5 'SF Mono',ui-monospace,Menlo,Consolas,monospace;margin-block:4px}pre code{background:none;padding:0;font:inherit}table{width:100%;border-collapse:separate;border-spacing:2px;font:inherit}th,td{padding:6px 8px;border-radius:3px;text-align:left;vertical-align:top}th{background:var(--md-fill-strong);font-weight:600}td{background:var(--md-fill)}:is(th,td) :not(pre)>code{background:transparent}hr{border:0;border-top:1px solid var(--md-rule-strong);margin-block:10px}img{max-width:100%;height:auto;border-radius:4px}</style>
+</head><body>
+<h1>Sentinel — Elevated Task Automation Tool with Natural-Language Interface</h1>
+<p><strong>One-line pitch:</strong> A safety-first system automation tool where an LLM translates natural language (text or voice) into an explicit, reviewable action plan, and a Rust core independently validates and executes privileged OS operations — the AI never touches the system directly.</p>
+<p><strong>Target audience for this doc:</strong> yourself, mid-build, and anyone (interviewer, collaborator) trying to understand the architecture quickly.</p>
+<hr>
+<h2>1. Why this project exists (the pitch, in one paragraph)</h2>
+<p>Most &quot;AI does X on your computer&quot; demos let the model execute freely — that's a security nightmare and shows the builder didn't think about failure modes. Sentinel is built around one hard rule: <strong>the LLM only ever produces structured, typed data (an &quot;Action Plan&quot;). It never runs a command, touches a file, or spawns a process.</strong> A separate Rust policy engine validates every action against explicit rules before a separate Rust execution engine (running with least-privilege elevation) carries it out — and every step is logged to an audit trail. The interesting engineering is entirely in that boundary and everything downstream of it.</p>
+<hr>
+<h2>2. High-level architecture</h2>
+<pre><code>┌─────────────┐      ┌───────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│  Frontend    │─────▶│  Orchestrator  │─────▶│   LLM (planning)  │      │                    │
+│  (React)     │      │  (Rust API)    │      │   NL → Action[]   │      │                    │
+│  text/voice  │◀─────│  WebSocket +   │◀─────┴──────────────────┘      │                    │
+└─────────────┘      │  REST          │                                 │                    │
+                       │                │──────▶ Policy Engine ─────────▶│  Execution Engine  │
+                       │                │        (validate)              │  (privileged, per-  │
+                       │                │◀───────────────────────────────│  OS backend)       │
+                       │                │                                 │                    │
+                       │                │──────▶ Audit Log (append-only) ▶│                    │
+                       └───────────────┘                                 └──────────────────┘
+</code></pre>
+<p><strong>Five components, each independently testable:</strong></p>
+<ol>
+<li><strong>Frontend (React)</strong> — captures input (text/voice), renders the proposed plan as a diff/checklist, shows approve/reject, streams live execution status, shows audit history.</li>
+<li><strong>Orchestrator (Rust, e.g. Axum)</strong> — the API layer. Owns the WebSocket connection, calls the LLM, calls the policy engine, calls the execution engine, writes to the audit log. This is the &quot;glue&quot; service but still meaningfully engineered (state machine per session: <code>Drafting → PendingApproval → Approved → Executing → Completed/Failed</code>).</li>
+<li><strong>LLM planning layer</strong> — takes raw NL, returns a strictly-typed JSON <code>Vec&lt;Action&gt;</code> via function-calling / JSON schema mode. No free text is ever trusted as an instruction.</li>
+<li><strong>Policy engine (Rust)</strong> — pure, synchronous, easily unit-tested. Takes an <code>Action</code>, returns <code>Allow | Deny(reason) | RequireExtraConfirmation(reason)</code>.</li>
+<li><strong>Execution engine (Rust, OS-specific backends)</strong> — actually performs privileged operations. This is where OS-specific code lives (see Section 4).</li>
+</ol>
+<hr>
+<h2>3. The Action Plan contract (the core abstraction)</h2>
+<p>This is the single most important design decision in the whole project — get this right first.</p>
+<pre><code class="language-rust">#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = &#34;type&#34;)]
+pub enum Action {
+    DeleteFile { path: PathBuf, reason: String },
+    DeleteFilesMatching { root: PathBuf, older_than_days: Option&lt;u32&gt;, pattern: Option&lt;String&gt;, reason: String },
+    MoveFile { from: PathBuf, to: PathBuf, reason: String },
+    ChangePermissions { path: PathBuf, mode: PermissionSpec, reason: String },
+    KillProcess { pid_or_name: ProcessTarget, reason: String },
+    CompressDirectory { path: PathBuf, output: PathBuf, reason: String },
+    // deliberately NOT: RunShellCommand(String) — never let the model emit raw shell
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ActionPlan {
+    pub id: Uuid,
+    pub original_request: String,       // what the user typed/said
+    pub actions: Vec&lt;Action&gt;,
+    pub estimated_impact: ImpactSummary, // e.g. &#34;12 files, 340MB, oldest from 2019&#34;
+    pub created_at: DateTime&lt;Utc&gt;,
+}
+</code></pre>
+<p><strong>Why a closed enum and not &quot;let the LLM write a script&quot;:</strong></p>
+<ul>
+<li>Every possible action is enumerable, testable, and independently safe to implement.</li>
+<li>The policy engine can pattern-match exhaustively (Rust will force you to handle every variant).</li>
+<li>You can render a <em>readable diff</em> in the UI — &quot;delete 12 files in ~/Downloads older than 90 days&quot; is renderable; an arbitrary shell script is not.</li>
+<li>This is your strongest interview line: <em>&quot;I treated the LLM as a translator into a closed, typed vocabulary — not as an execution engine.&quot;</em></li>
+</ul>
+<hr>
+<h2>4. How each OS is handled</h2>
+<p>The <strong>policy engine and orchestrator are OS-agnostic.</strong> Only the <strong>execution engine</strong> has per-OS backends, behind a single trait:</p>
+<pre><code class="language-rust">trait PrivilegedExecutor {
+    fn delete_file(&amp;self, path: &amp;Path) -&gt; Result&lt;ExecutionResult, ExecError&gt;;
+    fn change_permissions(&amp;self, path: &amp;Path, mode: &amp;PermissionSpec) -&gt; Result&lt;ExecutionResult, ExecError&gt;;
+    fn kill_process(&amp;self, target: &amp;ProcessTarget) -&gt; Result&lt;ExecutionResult, ExecError&gt;;
+    fn elevate(&amp;self) -&gt; Result&lt;ElevationToken, ExecError&gt;;
+}
+</code></pre>
+<p>Three implementations, selected via <code>#[cfg(target_os = &quot;...&quot;)]</code>, matching your earlier OS-integration practice work directly.</p>
+<h3>Windows</h3>
+<ul>
+<li><strong>Elevation:</strong> <code>ShellExecuteW</code> with <code>&quot;runas&quot;</code> verb to spawn an elevated helper process for a <em>single action</em> — never run the whole app elevated. UAC prompt appears per privileged batch, not per app launch.</li>
+<li><strong>Permissions:</strong> Windows ACLs via <code>windows-rs</code> bindings (<code>SetNamedSecurityInfoW</code>) rather than trying to force POSIX-style chmod semantics.</li>
+<li><strong>Process management:</strong> <code>OpenProcess</code> + <code>TerminateProcess</code> via Win32 API, process listing via <code>CreateToolhelp32Snapshot</code>.</li>
+<li><strong>Registry (stretch, see Section 6):</strong> <code>RegOpenKeyExW</code>/<code>RegSetValueExW</code> — only if you add registry actions later; keep it out of MVP.</li>
+<li><strong>Secure secrets/config (if needed):</strong> DPAPI (<code>CryptProtectData</code>), same pattern as your vault project — reusable code.</li>
+</ul>
+<h3>Linux</h3>
+<ul>
+<li><strong>Elevation:</strong> <code>pkexec</code> (Polkit) for GUI-friendly elevation prompts, or <code>sudo</code> with a clearly scoped policy file if running headless/server-side. Spawn a short-lived elevated child process per action, communicate result back over a pipe.</li>
+<li><strong>Permissions:</strong> direct POSIX <code>chmod</code>/<code>chown</code> via <code>nix</code> crate, or raw syscalls if you want to flex — either is defensible.</li>
+<li><strong>Process management:</strong> read <code>/proc/[pid]/</code> for process listing (no special API needed), send <code>SIGTERM</code>/<code>SIGKILL</code> via <code>nix::sys::signal</code>.</li>
+<li><strong>Config files (stretch):</strong> plain files, permissions-protected — no registry equivalent, which is worth explicitly noting in your README as a platform difference.</li>
+</ul>
+<h3>macOS</h3>
+<ul>
+<li><strong>Elevation:</strong> <code>AuthorizationExecuteWithPrivileges</code> (deprecated but still common) or a proper <code>SMJobBless</code>-style privileged helper tool (more correct, more work — good stretch goal if you want to show you know the &quot;right&quot; way vs the &quot;quick&quot; way).</li>
+<li><strong>Permissions:</strong> POSIX permissions same as Linux, but be aware of extended attributes (<code>xattr</code>) and TCC (Transparency, Consent, Control) — macOS will silently block access to protected folders (Downloads, Desktop) unless the app is granted permission. This is a <em>great</em> thing to document as a discovered constraint — shows real hands-on exposure.</li>
+<li><strong>Process management:</strong> same POSIX signal APIs as Linux.</li>
+<li><strong>plist editing (stretch):</strong> <code>plist</code> crate for reading/writing <code>.plist</code> files if you extend into LaunchAgent management.</li>
+</ul>
+<h3>Cross-cutting design point worth stating explicitly in your README</h3>
+<blockquote>
+<p>&quot;The policy engine and orchestrator have zero OS-specific code. Only the execution engine varies, behind one trait. Adding a fourth platform would mean writing one new <code>impl PrivilegedExecutor</code>, touching nothing else.&quot; — this sentence alone signals good architecture to a reviewer skimming your repo.</p>
+</blockquote>
+<p><strong>Recommendation for actually building it:</strong> implement fully for <strong>one OS first</strong> (whichever you dev on daily), stub the other two with clear <code>todo!()</code>/error returns, and if time allows implement a second. Claiming &quot;designed for three platforms, fully implemented on Linux + Windows, macOS stubbed with documented approach&quot; is honest, credible, and still very strong — better than a shallow, buggy three-OS implementation.</p>
+<hr>
+<h2>5. What the tool can actually do (MVP action catalog)</h2>
+<p>Keep the MVP catalog small and correct rather than large and shaky:</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Example NL input</th>
+<th>Risk tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delete files by age/pattern</td>
+<td>&quot;clean up Downloads older than 90 days&quot;</td>
+<td>Medium — always dry-run first</td>
+</tr>
+<tr>
+<td>Move/organize files</td>
+<td>&quot;move all PDFs from Downloads to Documents/PDFs&quot;</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Change file permissions</td>
+<td>&quot;make this script executable&quot;</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Kill a runaway process</td>
+<td>&quot;kill any process using more than 90% CPU for 5+ minutes&quot;</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Compress/archive old files</td>
+<td>&quot;zip up anything in Downloads I haven't touched in a year&quot;</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Find large files</td>
+<td>&quot;show me anything over 1GB in my home folder&quot; (read-only — no policy needed)</td>
+<td>None — good &quot;safe demo&quot; action</td>
+</tr>
+</tbody>
+</table>
+<p>Every destructive action supports a <strong>dry-run mode</strong> by default — the plan is generated and shown, nothing executes until explicit approval, and the UI clearly marks which actions are reversible (move) vs irreversible (delete, kill).</p>
+<hr>
+<h2>6. Extra features — easy/moderate effort, high visual/technical payoff</h2>
+<p>Ranked by effort-to-impact ratio for someone at 1–2 YOE building a resume project.</p>
+<h3>Easy, high impact</h3>
+<ol>
+<li><strong>Dry-run / simulation mode toggle</strong> — show <em>exactly</em> what would happen without doing it. Almost free to build (you already compute <code>estimated_impact</code>), and it's the single best &quot;trust me, I thought about safety&quot; demo moment.</li>
+<li><strong>Live execution progress via WebSocket</strong> — stream each action's status (<code>pending → running → done/failed</code>) to the UI in real time instead of a spinner-then-result. Turns a static form into a genuinely impressive live demo.</li>
+<li><strong>Deliberate &quot;blocked&quot; demo scenario</strong> — hardcode a policy rule like &quot;never touch anything outside <code>$HOME</code>&quot; and have a ready demo input that tries to violate it, so you can show the policy engine catching it live. Very cheap to build, extremely persuasive in an interview.</li>
+<li><strong>Audit log viewer with filtering</strong> — list past plans, who approved them, what executed, success/failure, with a JSON diff view. Reuses UI you're already building for plan review.</li>
+</ol>
+<h3>Moderate effort, strong payoff</h3>
+<ol start="5">
+<li><strong>Undo for reversible actions</strong> — for <code>MoveFile</code>, store the reverse action in the audit log and offer a one-click undo. For <code>DeleteFile</code>, this means routing deletes through a &quot;trash&quot; staging directory instead of true deletion (soft-delete with a retention window) — a real, defensible safety pattern worth implementing rather than faking.</li>
+<li><strong>Confidence/ambiguity handling from the LLM</strong> — if the NL request is ambiguous (&quot;clean up my downloads&quot; — by what criteria?), have the LLM return a <code>NeedsClarification</code> response instead of guessing, and have the UI ask a follow-up question. This is a legitimately hard, legitimately good UX problem to solve and shows maturity beyond &quot;happy path only.&quot;</li>
+<li><strong>Rate limiting / blast-radius caps in the policy engine</strong> — e.g., &quot;no single plan may delete more than N files or touch more than X MB without a second explicit confirmation step.&quot; Cheap to implement (just a threshold check), reads as genuinely thoughtful safety engineering.</li>
+<li><strong>Voice input via Whisper</strong> — browser mic capture → Whisper API (or local <code>whisper.cpp</code> if you want zero external dependency) → same NL pipeline as text. Don't build STT yourself; treat it as a clean input adapter. Adds a great demo layer for relatively low integration cost.</li>
+</ol>
+<h3>Stretch (only if time allows — don't let these block MVP)</h3>
+<ol start="9">
+<li><strong>Scheduled/recurring plans</strong> — &quot;every Sunday, clean up Downloads older than 90 days,&quot; with a cron-style scheduler in Rust and a background approval-required or pre-approved-template flow. Interesting because it forces you to think about &quot;who approves an automated recurring privileged action&quot; — a real unsolved-feeling problem, good talking point even if only partially built.</li>
+<li><strong>Multi-user / role model</strong> — a basic &quot;admin approves plans submitted by standard users&quot; flow. Adds real-world credibility (this is how enterprise automation tools actually work) but is a genuine scope increase — only attempt after MVP is solid.</li>
+<li><strong>Plan explainability / reasoning trace</strong> — show <em>why</em> the LLM chose those specific actions (e.g., surfacing the function-calling reasoning or a short generated justification per action). Nice-to-have, cheap if your LLM call already supports it, skip if it adds friction.</li>
+</ol>
+<p><strong>Recommendation:</strong> build items 1–4 as part of your core MVP (they're cheap and they <em>are</em> the safety story), pick 2 of items 5–8 based on what's more interesting to you, and treat 9–11 explicitly as a &quot;Future Work&quot; section in your README rather than something you attempt to finish — a well-written future-work section signals maturity too.</p>
+<hr>
+<h2>7. Suggested build sequence (2–3 day chunks each)</h2>
+<ol>
+<li><strong>Action schema + policy engine</strong>, unit-tested in isolation with hardcoded <code>Vec&lt;Action&gt;</code> — no LLM, no UI, no real execution yet.</li>
+<li><strong>Execution engine</strong> for one OS, 3 action types (delete, permission change, kill process), with append-only audit log.</li>
+<li><strong>LLM integration</strong>: NL → structured <code>ActionPlan</code> via function-calling/JSON mode, tested via CLI/curl only.</li>
+<li><strong>React frontend</strong>: input box → plan review/diff screen → approve/reject → WebSocket live execution status.</li>
+<li><strong>Dry-run mode + blocked-scenario demo + audit log viewer UI.</strong></li>
+<li><strong>Pick 2 moderate features (undo, ambiguity handling, blast-radius caps, or voice input).</strong></li>
+<li><strong>Second OS backend</strong> if time allows; otherwise document the approach clearly and stub it.</li>
+<li><strong>Polish + README + a scripted 90-second demo</strong> (this matters as much as the code — practice showing: normal request → review → approve → live execution → then a blocked/dangerous request being caught).</li>
+</ol>
+<hr>
+<h2>8. What to say about it on a resume (draft bullets)</h2>
+<ul>
+<li><em>Designed and built a natural-language system automation tool with a strict separation between AI planning and privileged execution: an LLM emits a closed, typed action schema which a Rust policy engine validates before a least-privilege execution layer performs any OS-level operation.</em></li>
+<li><em>Implemented cross-platform privileged execution (Windows ACLs/UAC elevation, Linux Polkit/POSIX permissions) behind a single trait, with an append-only audit log and dry-run simulation mode.</em></li>
+<li><em>Built a real-time React frontend streaming live execution status over WebSocket, including plan review/approval UX and a blast-radius safety cap in the policy engine.</em></li>
+</ul>
+<hr>
+<h2>9. Explicit non-goals (worth stating, in your repo and to yourself)</h2>
+<ul>
+<li>Not trying to be a general-purpose AI agent framework.</li>
+<li>Not trying to support arbitrary shell execution — this is a design choice, not a limitation to apologize for.</li>
+<li>Not aiming for full enterprise RBAC in v1 — single-user, single-machine scope is fine and honest.</li>
+<li>Not reimplementing Whisper/STT — treat it as an off-the-shelf input adapter.</li>
+</ul>
+
+</body></html>

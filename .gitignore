@@ -1,0 +1,34 @@
+# Rust target directories
+/target/
+/target_check/
+**/*.rs.bk
+Cargo.lock
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.npm
+.eslintcache
+
+# Local SQLite databases and audit logs
+*.db
+*.db-shm
+*.db-wal
+.sentinel/
+.sentinel-trash/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

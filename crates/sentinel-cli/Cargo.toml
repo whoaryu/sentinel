@@ -1,0 +1,13 @@
+[package]
+name = "sentinel-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sentinel-core = { path = "../sentinel-core" }
+sentinel-policy = { path = "../sentinel-policy" }
+sentinel-exec = { path = "../sentinel-exec" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true

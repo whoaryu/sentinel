@@ -1,0 +1,1027 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Sentinel Build Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* =====================================================
+   DESIGN TOKENS — dark-first terminal-grade document
+   Layout: sticky left nav + scrolling content, stacks on mobile
+   ===================================================== */
+:root {
+  --bg:          #0c0e14;
+  --bg-raised:   #13161f;
+  --bg-card:     #191d28;
+  --bg-code:     #0a0c10;
+  --border:      rgba(255,255,255,.08);
+  --border-mid:  rgba(255,255,255,.14);
+  --fg:          #dde1ef;
+  --fg-muted:    #7c849e;
+  --fg-dim:      #4e5570;
+  --accent:      #5bf5c0;
+  --accent-dim:  rgba(91,245,192,.12);
+  --accent-glow: rgba(91,245,192,.25);
+  --warn:        #f5a623;
+  --warn-dim:    rgba(245,166,35,.12);
+  --danger:      #f55c5c;
+  --danger-dim:  rgba(245,92,92,.10);
+  --info:        #7eb8ff;
+  --phase1:      #5bf5c0;
+  --phase2:      #7eb8ff;
+  --phase3:      #b985ff;
+  --phase4:      #f5a623;
+  color-scheme: dark;
+
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-body:    'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  --nav-width: 224px;
+  --content-max: 760px;
+  --radius: 8px;
+  --radius-sm: 5px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:          #f4f5f8;
+    --bg-raised:   #ffffff;
+    --bg-card:     #ffffff;
+    --bg-code:     #1a1d27;
+    --border:      rgba(0,0,0,.08);
+    --border-mid:  rgba(0,0,0,.14);
+    --fg:          #1a1d2e;
+    --fg-muted:    #5a6080;
+    --fg-dim:      #9099b8;
+    --accent:      #00a572;
+    --accent-dim:  rgba(0,165,114,.10);
+    --accent-glow: rgba(0,165,114,.20);
+    --warn:        #b86e00;
+    --warn-dim:    rgba(184,110,0,.10);
+    --danger:      #d63030;
+    --danger-dim:  rgba(214,48,48,.08);
+    --info:        #2060c8;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:          #f4f5f8;
+  --bg-raised:   #ffffff;
+  --bg-card:     #ffffff;
+  --bg-code:     #1a1d27;
+  --border:      rgba(0,0,0,.08);
+  --border-mid:  rgba(0,0,0,.14);
+  --fg:          #1a1d2e;
+  --fg-muted:    #5a6080;
+  --fg-dim:      #9099b8;
+  --accent:      #00a572;
+  --accent-dim:  rgba(0,165,114,.10);
+  --accent-glow: rgba(0,165,114,.20);
+  --warn:        #b86e00;
+  --warn-dim:    rgba(184,110,0,.10);
+  --danger:      #d63030;
+  --danger-dim:  rgba(214,48,48,.08);
+  --info:        #2060c8;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === HEADER === */
+.site-header {
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 100;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.logo-icon svg { width: 15px; height: 15px; }
+.logo-name { color: var(--fg); }
+.logo-name span { color: var(--accent); }
+
+.header-controls { display: flex; align-items: center; gap: 12px; }
+.theme-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: color .15s, border-color .15s;
+}
+.theme-btn:hover { color: var(--fg); border-color: var(--border-mid); }
+.progress-pill {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent-glow);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* === LAYOUT === */
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* === NAV === */
+.sidebar {
+  width: var(--nav-width);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 57px);
+  height: calc(100vh - 57px - env(safe-area-inset-top, 0px));
+  padding: 24px 0 32px;
+  background: var(--bg-raised);
+}
+.nav-group { margin-bottom: 20px; }
+.nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 0 20px;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+}
+.nav-item {
+  display: block;
+  padding: 7px 20px;
+  color: var(--fg-muted);
+  font-size: 13.5px;
+  text-decoration: none;
+  transition: color .12s, background .12s;
+  border-left: 2px solid transparent;
+  margin-left: -1px;
+}
+.nav-item:hover { color: var(--fg); background: var(--accent-dim); border-left-color: var(--accent); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
+.nav-phase { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: middle; flex-shrink: 0; }
+
+/* === MAIN CONTENT === */
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 40px 48px 80px;
+  overflow-y: auto;
+}
+.content-inner { max-width: var(--content-max); }
+
+/* === SECTIONS === */
+section { margin-bottom: 64px; scroll-margin-top: 80px; }
+
+.section-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: var(--fg);
+  text-wrap: balance;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+h2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--fg);
+  text-wrap: balance;
+  margin-bottom: 16px;
+}
+h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 10px;
+  margin-top: 24px;
+}
+p { margin-bottom: 14px; max-width: 68ch; }
+p:last-child { margin-bottom: 0; }
+
+/* === HERO === */
+.hero-intro {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-bottom: 28px;
+  font-size: 15px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+}
+.hero-intro strong { color: var(--accent); }
+
+/* === CALLOUT BOXES === */
+.callout {
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid transparent;
+}
+.callout-accent { background: var(--accent-dim); border-color: var(--accent-glow); }
+.callout-warn { background: var(--warn-dim); border-color: rgba(245,166,35,.3); }
+.callout-danger { background: var(--danger-dim); border-color: rgba(245,92,92,.25); }
+.callout-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.callout-accent .callout-label { color: var(--accent); }
+.callout-warn .callout-label { color: var(--warn); }
+.callout-danger .callout-label { color: var(--danger); }
+
+/* === CODE === */
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  overflow-x: auto;
+  margin-bottom: 18px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c9d1e8;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: .88em;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+
+.code-comment { color: var(--fg-dim); }
+.code-type { color: #7eb8ff; }
+.code-fn { color: #d4a8ff; }
+.code-str { color: #aee67f; }
+.code-kw { color: var(--accent); }
+.code-field { color: #f5a623; }
+
+/* === PHASE CARDS === */
+.phases { display: flex; flex-direction: column; gap: 16px; }
+.phase-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.phase-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+  transition: background .12s;
+}
+.phase-header:hover { background: rgba(255,255,255,.03); }
+.phase-card.open .phase-header { border-bottom-color: var(--border); }
+.phase-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.phase-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; flex: 1; }
+.phase-duration {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.phase-chevron { color: var(--fg-dim); transition: transform .2s; font-size: 13px; }
+.phase-card.open .phase-chevron { transform: rotate(90deg); }
+.phase-body { padding: 20px; display: none; }
+.phase-card.open .phase-body { display: block; }
+
+.step-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.step-item { display: flex; gap: 12px; align-items: flex-start; }
+.step-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.step-text { font-size: 14px; line-height: 1.55; color: var(--fg); }
+.step-text strong { color: var(--fg); font-weight: 600; }
+.step-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.tag-test { background: rgba(126,184,255,.15); color: var(--info); }
+.tag-safe { background: var(--accent-dim); color: var(--accent); }
+.tag-ui { background: rgba(185,133,255,.15); color: #b985ff; }
+.tag-hard { background: var(--warn-dim); color: var(--warn); }
+
+/* phase colors */
+.p1 { background: rgba(91,245,192,.15); color: var(--phase1); }
+.p2 { background: rgba(126,184,255,.15); color: var(--phase2); }
+.p3 { background: rgba(185,133,255,.15); color: var(--phase3); }
+.p4 { background: rgba(245,166,35,.15); color: var(--phase4); }
+.p5 { background: rgba(245,92,92,.15); color: var(--danger); }
+
+/* === COMPONENTS TABLE === */
+.comp-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.comp-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.comp-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  padding-top: 1px;
+}
+.comp-desc { font-size: 14px; color: var(--fg-muted); }
+.comp-desc strong { color: var(--fg); font-weight: 600; }
+
+/* === TECH STACK === */
+.stack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.stack-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.stack-layer { font-size: 10px; font-family: var(--font-mono); color: var(--fg-dim); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.stack-name { font-size: 15px; font-weight: 600; font-family: var(--font-display); color: var(--fg); margin-bottom: 4px; }
+.stack-why { font-size: 13px; color: var(--fg-muted); line-height: 1.45; }
+
+/* === CHECKLIST === */
+.checklist { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.checklist li {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 14px; color: var(--fg-muted);
+}
+.checklist li::before {
+  content: '✦';
+  color: var(--accent);
+  font-size: 10px;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.checklist li strong { color: var(--fg); font-weight: 600; }
+
+/* === INTERVIEW TABLE === */
+.interview-list { display: flex; flex-direction: column; gap: 14px; }
+.interview-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--phase3);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+.interview-q { font-size: 13px; font-family: var(--font-mono); color: var(--fg-dim); margin-bottom: 6px; }
+.interview-a { font-size: 14px; color: var(--fg); line-height: 1.55; }
+.interview-a em { color: var(--accent); font-style: normal; font-weight: 600; }
+
+/* === ARCH DIAGRAM === */
+.arch-diagram {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 18px;
+  overflow-x: auto;
+}
+
+/* === DIVIDER === */
+.divider { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+/* === RESPONSIVE === */
+@media (max-width: 780px) {
+  .sidebar { display: none; }
+  .content { padding: 24px 20px 60px; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 19px; }
+  .stack-grid { grid-template-columns: 1fr; }
+  .comp-row { grid-template-columns: 1fr; gap: 4px; }
+}
+@media (max-width: 480px) {
+  .site-header { padding: 12px 16px; }
+  .progress-pill { display: none; }
+}
+
+/* reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .phase-chevron { transition: none; }
+  .phase-body, .theme-btn { transition: none; }
+}
+</style>
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 16 16" fill="none" stroke="#0c0e14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 1L14 4v4c0 3.3-2.7 6-6 6S2 11.3 2 8V4L8 1z"/>
+        <path d="M5.5 8l2 2 3-3"/>
+      </svg>
+    </div>
+    <span class="logo-name"><span>Sentinel</span> Build Plan</span>
+  </div>
+  <div class="header-controls">
+    <div class="progress-pill">Phase 1 of 5</div>
+    <button class="theme-btn" id="themeBtn">☀ Light</button>
+  </div>
+</header>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR NAV -->
+  <nav class="sidebar">
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <a class="nav-item active" href="#overview">What You're Building</a>
+      <a class="nav-item" href="#architecture">Architecture</a>
+      <a class="nav-item" href="#stack">Tech Stack</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Build Plan</div>
+      <a class="nav-item" href="#phase1"><span class="nav-phase" style="background:#5bf5c0"></span>Phase 1 — Core Schema</a>
+      <a class="nav-item" href="#phase2"><span class="nav-phase" style="background:#7eb8ff"></span>Phase 2 — Execution</a>
+      <a class="nav-item" href="#phase3"><span class="nav-phase" style="background:#b985ff"></span>Phase 3 — LLM Bridge</a>
+      <a class="nav-item" href="#phase4"><span class="nav-phase" style="background:#f5a623"></span>Phase 4 — Frontend</a>
+      <a class="nav-item" href="#phase5"><span class="nav-phase" style="background:#f55c5c"></span>Phase 5 — Polish</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Advice</div>
+      <a class="nav-item" href="#improvements">Making It Better</a>
+      <a class="nav-item" href="#easier">Making It Easier</a>
+      <a class="nav-item" href="#interviews">Interview Lines</a>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="content">
+  <div class="content-inner">
+
+    <!-- OVERVIEW -->
+    <section id="overview">
+      <div class="section-eyebrow">Project Overview</div>
+      <h1>The Sentinel Implementation Plan</h1>
+      <div class="hero-intro">
+        The core insight: <strong>the LLM is a translator, not an executor.</strong> It emits a typed <code>Vec&lt;Action&gt;</code>. A separate Rust policy engine validates it. A separate Rust execution engine runs it with least-privilege elevation. The AI never touches the system directly — that boundary is the entire project.
+      </div>
+
+      <h2>Five Components</h2>
+      <div class="comp-grid">
+        <div class="comp-row">
+          <div class="comp-name">Frontend</div>
+          <div class="comp-desc"><strong>React</strong> — input field, renders the plan as a diff/checklist, approve/reject button, streams live status over WebSocket, audit log viewer.</div>
+        </div>
+        <div class="comp-row">
+          <div class="comp-name">Orchestrator</div>
+          <div class="comp-desc"><strong>Rust + Axum</strong> — the API server. Owns the session state machine: <code>Drafting → PendingApproval → Approved → Executing → Done/Failed</code>. Calls the other four components.</div>
+        </div>
+        <div class="comp-row">
+          <div class="comp-name">LLM Layer</div>
+          <div class="comp-desc"><strong>Claude/GPT-4o function calling</strong> — NL → strictly-typed <code>ActionPlan</code> JSON. Free text is never trusted as an instruction; the model only produces structured, enumerable data.</div>
+        </div>
+        <div class="comp-row">
+          <div class="comp-name">Policy Engine</div>
+          <div class="comp-desc"><strong>Pure Rust</strong> — takes an <code>Action</code>, returns <code>Allow | Deny(reason) | RequireExtraConfirmation</code>. Synchronous, zero IO, trivially unit-testable. The most interview-worthy component.</div>
+        </div>
+        <div class="comp-row">
+          <div class="comp-name">Execution Engine</div>
+          <div class="comp-desc"><strong>Rust trait + OS backends</strong> — one <code>PrivilegedExecutor</code> trait with Windows, Linux, macOS impls behind <code>#[cfg(target_os)]</code>. This is where UAC / Polkit / AuthorizationServices live.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section id="architecture">
+      <div class="section-eyebrow">Architecture</div>
+      <h2>The Action Enum — Get This Right First</h2>
+      <p>The most critical design decision. A <strong>closed enum</strong> means the policy engine can pattern-match exhaustively, every variant is independently testable, and the UI can render a human-readable diff. Never let the model emit raw shell commands — that's the whole point.</p>
+
+<pre><span class="code-comment">// sentinel-core/src/action.rs</span>
+<span class="code-kw">#[derive(Serialize, Deserialize, Debug, Clone)]</span>
+<span class="code-kw">#[serde(tag = "type")]</span>
+<span class="code-kw">pub enum</span> <span class="code-type">Action</span> {
+    <span class="code-type">DeleteFile</span> {
+        <span class="code-field">path</span>: PathBuf,
+        <span class="code-field">reason</span>: String,           <span class="code-comment">// LLM must justify every action</span>
+    },
+    <span class="code-type">DeleteFilesMatching</span> {
+        <span class="code-field">root</span>: PathBuf,
+        <span class="code-field">older_than_days</span>: Option&lt;u32&gt;,
+        <span class="code-field">pattern</span>: Option&lt;String&gt;,
+        <span class="code-field">reason</span>: String,
+    },
+    <span class="code-type">MoveFile</span>      { <span class="code-field">from</span>: PathBuf, <span class="code-field">to</span>: PathBuf, <span class="code-field">reason</span>: String },
+    <span class="code-type">ChangePermissions</span> { <span class="code-field">path</span>: PathBuf, <span class="code-field">mode</span>: PermissionSpec, <span class="code-field">reason</span>: String },
+    <span class="code-type">KillProcess</span>   { <span class="code-field">pid_or_name</span>: ProcessTarget, <span class="code-field">reason</span>: String },
+    <span class="code-type">CompressDirectory</span> { <span class="code-field">path</span>: PathBuf, <span class="code-field">output</span>: PathBuf, <span class="code-field">reason</span>: String },
+    <span class="code-type">FindLargeFiles</span> { <span class="code-field">root</span>: PathBuf, <span class="code-field">min_size_mb</span>: u64 }, <span class="code-comment">// read-only — no policy needed</span>
+
+    <span class="code-comment">// Deliberately NOT here: RunShellCommand(String)</span>
+    <span class="code-comment">// "I treated the LLM as a translator into a closed vocabulary"</span>
+}
+
+<span class="code-kw">pub enum</span> <span class="code-type">PolicyDecision</span> {
+    <span class="code-type">Allow</span>,
+    <span class="code-type">Deny</span>(String),
+    <span class="code-type">RequireExtraConfirmation</span>(String),
+}</pre>
+
+      <div class="callout callout-accent">
+        <div class="callout-label">Interview line</div>
+        The closed enum means Rust's exhaustive match forces you to handle every action in the policy engine. You literally cannot ship a new action without a policy decision. That's not a cute trick — it's the safety property made structural.
+      </div>
+
+      <h2>Data Flow</h2>
+<pre><span class="code-comment">User types:  "clean up Downloads folder older than 90 days"
+                │
+                ▼
+         ┌─────────────┐
+         │ Orchestrator │  POST /api/plan
+         │ (Axum/Rust)  │◄─────── session state: Drafting
+         └──────┬──────┘
+                │ NL string
+                ▼
+         ┌─────────────┐
+         │  LLM Layer   │  function-calling / JSON mode
+         │  (Claude)    │  returns: ActionPlan { id, actions: Vec&lt;Action&gt;, impact }
+         └──────┬──────┘
+                │ Vec&lt;Action&gt;
+                ▼
+         ┌─────────────┐
+         │Policy Engine │  per-action: Allow | Deny | RequireExtra
+         │  (pure Rust) │  ← no IO, no async, trivially tested
+         └──────┬──────┘
+                │ approved plan
+                ▼ (user clicks Approve in UI)
+         ┌─────────────┐
+         │  Execution   │  per-OS backend, least-privilege elevation
+         │   Engine     │  streams progress → WebSocket → React UI
+         └──────┬──────┘
+                │
+         Audit Log (append-only, every step recorded)</span></pre>
+    </section>
+
+    <!-- TECH STACK -->
+    <section id="stack">
+      <div class="section-eyebrow">Tech Stack</div>
+      <h2>What to Actually Use</h2>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-layer">Core</div>
+          <div class="stack-name">Rust + Cargo workspaces</div>
+          <div class="stack-why">Monorepo: <code>sentinel-core</code>, <code>sentinel-policy</code>, <code>sentinel-exec</code>, <code>sentinel-api</code> as separate crates.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">API Server</div>
+          <div class="stack-name">Axum</div>
+          <div class="stack-why">Minimal, async, great WebSocket support. Add <code>tower-http</code> for CORS and tracing.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">Frontend</div>
+          <div class="stack-name">React + Vite</div>
+          <div class="stack-why">Vite's dev server proxies to Axum seamlessly. Use Tailwind for speed — you're building a tool, not a marketing site.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">LLM</div>
+          <div class="stack-name">Claude claude-sonnet-4-5 or GPT-4o</div>
+          <div class="stack-why">Use structured outputs / JSON schema mode. Model the <code>Action</code> enum as a JSON schema — the model fills it in.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">Serialization</div>
+          <div class="stack-name">serde + serde_json</div>
+          <div class="stack-why">The <code>Action</code> enum crosses every boundary — Rust↔LLM, Rust↔UI. <code>serde</code> is the project's backbone.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">OS (Windows)</div>
+          <div class="stack-name">windows-rs</div>
+          <div class="stack-why">First-party Microsoft bindings. Use <code>ShellExecuteW("runas")</code> for UAC, <code>SetNamedSecurityInfoW</code> for ACLs.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">OS (Linux)</div>
+          <div class="stack-name">nix crate</div>
+          <div class="stack-why">POSIX wrappers over <code>chmod</code>, <code>chown</code>, signals. Elevation via <code>pkexec</code> (Polkit) — GUI-friendly prompt.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">Audit Log</div>
+          <div class="stack-name">SQLite via sqlx</div>
+          <div class="stack-why">Local append-only log. Async, compile-time query checking, no server needed. Add a <code>CHECK</code> trigger to prevent updates.</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-layer">Testing</div>
+          <div class="stack-name">Rust built-in + proptest</div>
+          <div class="stack-why">Policy engine is pure — property-test it with <code>proptest</code>. Generate random <code>Action</code>s and assert policy invariants hold.</div>
+        </div>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-label">Build for one OS first</div>
+        Implement fully on whatever you dev on daily. Stub the other backends with <code>unimplemented!("Linux backend — see ARCHITECTURE.md")</code>. "Designed for 3 platforms, fully implemented on Windows + Linux, macOS stubbed with documented approach" is honest and strong. A shallow broken 3-OS impl is worse than one solid one.
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- BUILD PHASES -->
+    <section id="phase1">
+      <div class="section-eyebrow">Build Sequence</div>
+      <h2>Five Phases — Work Front-to-Back Within Each</h2>
+      <p>Each phase is independently shippable and testable. Never start a new phase with a broken previous one. The test suite is your progress tracker.</p>
+
+      <div class="phases">
+
+        <!-- PHASE 1 -->
+        <div class="phase-card open" id="p1card">
+          <div class="phase-header" onclick="togglePhase('p1card')">
+            <div class="phase-num p1">1</div>
+            <div class="phase-title">Core Schema + Policy Engine</div>
+            <div class="phase-duration">2–3 days</div>
+            <div class="phase-chevron">▶</div>
+          </div>
+          <div class="phase-body">
+            <div class="callout callout-accent">
+              <div class="callout-label">Goal</div>
+              Write and fully unit-test the two most important files in the project: the <code>Action</code> enum and the policy engine. No LLM, no UI, no real execution yet — just types and logic.
+            </div>
+            <ul class="step-list">
+              <li class="step-item">
+                <div class="step-num p1">1</div>
+                <div class="step-text"><strong>Create Cargo workspace:</strong> <code>sentinel-core</code> (shared types), <code>sentinel-policy</code> (depends on core), <code>sentinel-exec</code>, <code>sentinel-api</code>. Add <code>serde</code> + <code>uuid</code> + <code>chrono</code> to core from day one — every other crate uses them.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p1">2</div>
+                <div class="step-text"><strong>Define the full Action enum</strong> in <code>sentinel-core/src/action.rs</code>. Add every variant you plan to support. Derive <code>Serialize, Deserialize, Debug, Clone</code>. Write the <code>ActionPlan</code> struct too. This file is the contract everything else implements against. <span class="step-tag tag-safe">lock this early</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p1">3</div>
+                <div class="step-text"><strong>Write the policy engine</strong> in <code>sentinel-policy/src/lib.rs</code>. A <code>PolicyEngine::evaluate(&amp;Action) → PolicyDecision</code> function with match arms for every variant. Start with simple rules: deny paths outside <code>$HOME</code>, deny deleting system directories, deny killing PIDs under 100.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p1">4</div>
+                <div class="step-text"><strong>Write 20+ unit tests for the policy engine.</strong> Test the allow cases, deny cases, and the "requires extra confirmation" cases explicitly. This is your safety story — make it airtight. <span class="step-tag tag-test">test-heavy</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p1">5</div>
+                <div class="step-text"><strong>Write a hardcoded integration test</strong> with a <code>Vec&lt;Action&gt;</code> that includes one action that should be blocked. Assert the policy engine catches it. This becomes your demo — run it in the interview.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PHASE 2 -->
+        <div class="phase-card" id="p2card">
+          <div class="phase-header" onclick="togglePhase('p2card')">
+            <div class="phase-num p2">2</div>
+            <div class="phase-title">Execution Engine + Audit Log</div>
+            <div class="phase-duration">3–4 days</div>
+            <div class="phase-chevron">▶</div>
+          </div>
+          <div class="phase-body">
+            <div class="callout callout-accent">
+              <div class="callout-label">Goal</div>
+              Implement 3 action types (<code>DeleteFilesMatching</code>, <code>ChangePermissions</code>, <code>KillProcess</code>) on your development OS only. Ship the append-only SQLite audit log.
+            </div>
+            <ul class="step-list">
+              <li class="step-item">
+                <div class="step-num p2">1</div>
+                <div class="step-text"><strong>Define the <code>PrivilegedExecutor</code> trait</strong> in <code>sentinel-exec</code>. Every OS backend implements this one trait. Add a <code>DryRunExecutor</code> that logs what <em>would</em> happen but does nothing — this is your first implementation and stays useful forever. <span class="step-tag tag-safe">safe default</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p2">2</div>
+                <div class="step-text"><strong>Implement elevation.</strong> On Linux: spawn a child process under <code>pkexec</code>, pass the action as JSON over stdin, read the result from stdout. On Windows: <code>ShellExecuteW("runas")</code> with a minimal helper binary. The key pattern: <strong>elevate per-batch, not per-app-launch.</strong></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p2">3</div>
+                <div class="step-text"><strong>Implement the 3 action types</strong> behind your OS backend. Start with <code>DeleteFilesMatching</code> — it's the most common use case and tests your path traversal code thoroughly. Add real error handling: can't delete a locked file, path doesn't exist, permission denied despite elevation.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p2">4</div>
+                <div class="step-text"><strong>Create the SQLite audit log</strong> with <code>sqlx</code>. Schema: <code>plan_id, action_type, path, status, timestamp, error_msg</code>. Add a trigger that prevents UPDATE/DELETE on the table — append-only is a structural guarantee, not a convention. <span class="step-tag tag-safe">audit trail</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p2">5</div>
+                <div class="step-text"><strong>Write a CLI driver</strong> (<code>sentinel-cli</code> binary) that takes a hardcoded <code>ActionPlan</code>, runs it through the policy engine, prints "Proceed? [y/N]", then executes on approval. This is your full pipeline working end-to-end before any LLM or UI exists.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PHASE 3 -->
+        <div class="phase-card" id="p3card">
+          <div class="phase-header" onclick="togglePhase('p3card')">
+            <div class="phase-num p3">3</div>
+            <div class="phase-title">LLM Integration</div>
+            <div class="phase-duration">2–3 days</div>
+            <div class="phase-chevron">▶</div>
+          </div>
+          <div class="phase-body">
+            <div class="callout callout-accent">
+              <div class="callout-label">Goal</div>
+              Wire NL → typed <code>ActionPlan</code> via function-calling. Test via <code>curl</code> and your CLI driver — no UI needed yet.
+            </div>
+            <ul class="step-list">
+              <li class="step-item">
+                <div class="step-num p3">1</div>
+                <div class="step-text"><strong>Convert your <code>Action</code> enum to a JSON Schema.</strong> Use <code>schemars</code> crate — derive <code>JsonSchema</code> on <code>Action</code> and call <code>schema_for!(ActionPlan)</code>. That schema becomes your function-calling tool definition. This is the cleanest approach: your types generate the schema, not the other way around. <span class="step-tag tag-safe">single source of truth</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p3">2</div>
+                <div class="step-text"><strong>Write the system prompt carefully.</strong> Tell the model: it's a translator into a closed action vocabulary, it must justify every action with a <code>reason</code> field, it must return <code>NeedsClarification</code> instead of guessing when the request is ambiguous, and it must estimate impact (file count, total size). Include a few examples in the prompt.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p3">3</div>
+                <div class="step-text"><strong>Add the <code>NeedsClarification</code> response path.</strong> If the model returns this instead of an <code>ActionPlan</code>, the orchestrator sends the clarifying question back to the UI. This handles "clean up my downloads" (by age? by type? what threshold?) gracefully. <span class="step-tag tag-hard">moderate effort, high payoff</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p3">4</div>
+                <div class="step-text"><strong>Add the Axum API server.</strong> Two endpoints to start: <code>POST /api/plan</code> (NL → ActionPlan, runs policy, returns plan with decisions) and <code>POST /api/plan/:id/execute</code> (executes an approved plan, streams progress via WebSocket). Store plans in memory first; persist to SQLite later.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p3">5</div>
+                <div class="step-text"><strong>Test with curl.</strong> Post "kill any process using more than 90% CPU" and see what the model returns. Post "delete system32" and confirm the policy engine blocks it. Have these curl commands in a <code>test-cases.sh</code> file — they become your demo script.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PHASE 4 -->
+        <div class="phase-card" id="p4card">
+          <div class="phase-header" onclick="togglePhase('p4card')">
+            <div class="phase-num p4">4</div>
+            <div class="phase-title">React Frontend</div>
+            <div class="phase-duration">3–4 days</div>
+            <div class="phase-chevron">▶</div>
+          </div>
+          <div class="phase-body">
+            <div class="callout callout-accent">
+              <div class="callout-label">Goal</div>
+              A working UI: text input → plan review with approve/reject → live WebSocket execution stream. Three screens, built incrementally.
+            </div>
+            <ul class="step-list">
+              <li class="step-item">
+                <div class="step-num p4">1</div>
+                <div class="step-text"><strong>Screen 1 — Input.</strong> A single text field with a submit button. Nothing fancy. Send to <code>POST /api/plan</code>, show a loading state. Configure Vite to proxy <code>/api/*</code> to your Axum server on port 3001. <span class="step-tag tag-ui">start here</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p4">2</div>
+                <div class="step-text"><strong>Screen 2 — Plan Review.</strong> This is the project's most important screen. Render each action as a card with: the action type as a badge, the path/target, the LLM's reason, the policy decision (green Allow / red Deny / yellow Needs Confirmation), and the estimated impact. A big "Approve Plan" button and a "Cancel" button. Make blocked actions visually unmistakable.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p4">3</div>
+                <div class="step-text"><strong>Screen 3 — Live Execution.</strong> Open a WebSocket to <code>/ws/plan/:id</code> on approve. Render each action as a row that transitions through <code>pending → running → ✓ done / ✗ failed</code>. The running state should have a subtle animation. Show a final summary: "12 files deleted, 340MB freed, 0 errors."</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p4">4</div>
+                <div class="step-text"><strong>Add the Audit Log viewer</strong> as a tab or sidebar route. List past plans: timestamp, original request, N actions, status, expand to see each action's result. This is cheap since the data already exists in SQLite — just add a <code>GET /api/audit</code> endpoint. <span class="step-tag tag-ui">big visual payoff</span></div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p4">5</div>
+                <div class="step-text"><strong>Dry-run mode toggle.</strong> A toggle in the header that sends <code>dry_run: true</code> with the execute request. The execution engine routes to <code>DryRunExecutor</code> instead of the real one. Show "Simulation" badge on the results. This is your safest demo default.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PHASE 5 -->
+        <div class="phase-card" id="p5card">
+          <div class="phase-header" onclick="togglePhase('p5card')">
+            <div class="phase-num p5">5</div>
+            <div class="phase-title">Demo Polish + README</div>
+            <div class="phase-duration">1–2 days</div>
+            <div class="phase-chevron">▶</div>
+          </div>
+          <div class="phase-body">
+            <div class="callout callout-warn">
+              <div class="callout-label">Do not skip this phase</div>
+              A well-polished 90-second demo matters as much as the code. The README is the first thing a recruiter or interviewer reads. This phase has the highest ROI of any time you'll spend.
+            </div>
+            <ul class="step-list">
+              <li class="step-item">
+                <div class="step-num p5">1</div>
+                <div class="step-text"><strong>Script your demo in advance.</strong> Two scenarios: (1) normal happy-path — "move all PDFs from Downloads to Documents/PDFs", show review screen, approve, watch it execute live. (2) blocked request — "delete everything in /tmp including system files", show policy engine catching it and displaying the deny reason.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p5">2</div>
+                <div class="step-text"><strong>Write the README architecture section first</strong> — not last. It forces you to explain the design clearly, which reveals any gaps. Include: a 2-sentence pitch, an architecture diagram (ASCII or Mermaid), the Action enum (yes, paste it — it's that important), and the 5-component list with one line each.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p5">3</div>
+                <div class="step-text"><strong>Write a "Future Work" section</strong> — scheduled tasks, multi-user approval, undo for reversible actions, voice input via Whisper. A thoughtful future-work section signals you designed beyond MVP scope. It also gives interviewers easy follow-up questions you're prepared for.</div>
+              </li>
+              <li class="step-item">
+                <div class="step-num p5">4</div>
+                <div class="step-text"><strong>Add blast-radius caps to the policy engine.</strong> A rule like "no single plan may delete more than 50 files or 1GB without an extra confirmation step." One additional match arm, five lines of code, but it's a real safety property and a great talking point.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+      </div><!-- end phases -->
+    </section>
+
+    <!-- IMPROVEMENTS -->
+    <section id="improvements">
+      <div class="section-eyebrow">Making It Better</div>
+      <h2>Features That Actually Move the Needle</h2>
+      <p>Ranked by interview-value-per-hour-of-work. Stop after item 3 unless you have extra time.</p>
+
+      <h3>Do these — they're essentially free</h3>
+      <ul class="checklist" style="margin-bottom:20px">
+        <li><strong>Hardcoded blocked scenario in the demo.</strong> A policy rule "never touch anything outside $HOME" and a test input that violates it. Zero engineering, maximum persuasion.</li>
+        <li><strong>Require <code>reason</code> on every Action.</strong> Forces the LLM to justify every action. Renders as a quote in the review UI. Signals you thought about accountability, not just capability.</li>
+        <li><strong>ImpactSummary on every plan.</strong> "12 files, 340MB, oldest from 2019" shown before the user approves. The LLM estimates this; you re-calculate it in Rust to verify. The discrepancy is worth checking.</li>
+        <li><strong>Reversibility tags.</strong> Mark each action in the UI as ✓ Reversible (Move, Compress) or ✗ Irreversible (Delete, Kill). Purely visual, but frames your safety thinking immediately.</li>
+      </ul>
+
+      <h3>Worth an afternoon each</h3>
+      <ul class="checklist" style="margin-bottom:20px">
+        <li><strong>Soft-delete instead of hard-delete.</strong> Route all <code>DeleteFile</code> actions through a <code>.sentinel-trash/</code> staging directory with a 7-day retention window. Adds undo, prevents accidents, and is a real safety pattern — not fake. Show the retention logic in your README.</li>
+        <li><strong>Ambiguity detection.</strong> If the LLM returns <code>NeedsClarification</code>, the UI shows the model's question and lets the user refine their request inline. Demonstrates you handled the unhappy path thoughtfully.</li>
+        <li><strong>Property-test the policy engine with <code>proptest</code>.</strong> Generate random <code>Action</code>s and assert that "actions outside HOME are always denied" and "actions with path traversal (../) are always denied." Shows testing maturity.</li>
+      </ul>
+
+      <h3>Stretch goals (only if MVP is rock-solid)</h3>
+      <ul class="checklist">
+        <li><strong>Voice input via Whisper API.</strong> Browser mic → <code>POST /api/transcribe</code> → same NL pipeline. Adds a show-stopping demo moment for very low integration effort. Don't build STT yourself — use the API.</li>
+        <li><strong>Scheduled recurring plans.</strong> "Every Sunday, clean up Downloads older than 90 days." Interesting because it forces you to design "who approves an automated privileged action" — a real problem without an obvious answer. Even a half-built version is a great talking point.</li>
+      </ul>
+    </section>
+
+    <!-- EASIER -->
+    <section id="easier">
+      <div class="section-eyebrow">Making It Easier</div>
+      <h2>Practical Shortcuts That Don't Cut Corners</h2>
+      <ul class="checklist">
+        <li><strong>Start with the DryRunExecutor and never remove it.</strong> 80% of your development time runs in dry-run mode. You can build and test the entire pipeline — schema, policy engine, LLM integration, frontend — without touching your filesystem once. Real execution is only the final integration step.</li>
+        <li><strong>Use <code>schemars</code> to generate your LLM tool definition.</strong> Don't hand-write a JSON schema for the <code>Action</code> enum. <code>#[derive(JsonSchema)]</code> + <code>schema_for!(ActionPlan)</code> gives you a perfectly accurate schema from your Rust types automatically. The model's output then matches your types structurally.</li>
+        <li><strong>Build the frontend against mock data first.</strong> Hardcode a <code>ActionPlan</code> JSON file in the React project. Build all three screens to full polish against it before writing a single API call. Then swap the mock for real API calls in one pass.</li>
+        <li><strong>Keep the CLI driver.</strong> Every time you add a new feature to the Rust core, test it with the CLI driver first before testing it through the full stack. <code>cargo run --bin sentinel-cli -- "clean up downloads"</code> is 10× faster to iterate on than running the full UI.</li>
+        <li><strong>Use <code>cargo-watch</code> for the Rust server and Vite HMR for React.</strong> <code>cargo watch -x "run --bin sentinel-api"</code> + Vite dev server = instant feedback loop. Set these up on day one.</li>
+        <li><strong>Pick one OS and go deep, not three and go shallow.</strong> Implement a real, fully working elevation flow on your development machine. Leave the other two as documented stubs. One correct implementation is far more impressive than three broken ones.</li>
+        <li><strong>Use <code>thiserror</code> from the start.</strong> Define a project-wide <code>SentinelError</code> enum with <code>#[derive(thiserror::Error)]</code>. Consistent error types across every crate makes the API layer's error handling trivial and makes your code look professionally structured.</li>
+        <li><strong>Store the LLM prompt in a file, not in source code.</strong> Put your system prompt in <code>prompts/plan_system.md</code> and load it at startup. This lets you iterate on prompt engineering without recompiling, and shows separation of concerns to anyone reading the repo.</li>
+      </ul>
+    </section>
+
+    <!-- INTERVIEWS -->
+    <section id="interviews">
+      <div class="section-eyebrow">Interview Prep</div>
+      <h2>Lines Worth Rehearsing</h2>
+      <div class="interview-list">
+        <div class="interview-item">
+          <div class="interview-q">Q: Why not just let the LLM run shell commands?</div>
+          <div class="interview-a">I treated the LLM as a <em>translator into a closed, typed vocabulary</em> — not as an execution engine. A closed enum means Rust's exhaustive match forces the policy engine to handle every possible action. You literally cannot ship a new action type without a corresponding policy decision. That's a structural safety guarantee, not a convention.</div>
+        </div>
+        <div class="interview-item">
+          <div class="interview-q">Q: How does the OS elevation work?</div>
+          <div class="interview-a">I elevate <em>per-batch, not per-app-launch.</em> When the user approves a plan, the execution engine spawns a short-lived helper process under pkexec (Linux) or ShellExecuteW with "runas" (Windows), passes the approved action set over a pipe as JSON, and reads results back. The orchestrator itself never runs elevated — only the helper, only for that specific set of actions, only after the policy engine has signed off.</div>
+        </div>
+        <div class="interview-item">
+          <div class="interview-q">Q: How do you test something with privileged OS operations?</div>
+          <div class="interview-a">The policy engine is <em>pure and synchronous</em> — no IO, no elevation, trivially unit-tested. The execution layer has a <code>DryRunExecutor</code> implementing the same trait that logs what would happen without doing it. I can test the entire pipeline — LLM translation, policy decisions, execution plan — without touching the filesystem at all. Real execution is only the final integration step.</div>
+        </div>
+        <div class="interview-item">
+          <div class="interview-q">Q: How do you handle a cross-platform codebase?</div>
+          <div class="interview-a">The policy engine and orchestrator have <em>zero OS-specific code.</em> Only the execution engine varies, behind one <code>PrivilegedExecutor</code> trait. Adding a fourth platform means writing one new <code>impl PrivilegedExecutor</code> and touching nothing else. I implemented fully on Linux, have Windows working for the core actions, and macOS is stubbed with the approach documented in ARCHITECTURE.md.</div>
+        </div>
+        <div class="interview-item">
+          <div class="interview-q">Q: What's the audit log for, and why is it append-only?</div>
+          <div class="interview-a">The audit log records every plan, every policy decision, and every execution result. It's append-only structurally — I added a database trigger that rejects any UPDATE or DELETE. This isn't a convention; the database enforces it. So even if the execution engine had a bug or a compromised path, you have a complete tamper-evident record of what ran and when.</div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- content-inner -->
+  </main>
+</div><!-- layout -->
+
+<script>
+function togglePhase(id) {
+  const card = document.getElementById(id);
+  card.classList.toggle('open');
+}
+
+// Theme toggle
+const themeBtn = document.getElementById('themeBtn');
+let theme = 'dark';
+try { theme = localStorage.getItem('sentinel-theme') || 'dark'; } catch(e) {}
+applyTheme(theme);
+
+themeBtn.addEventListener('click', () => {
+  theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
+  applyTheme(theme);
+  try { localStorage.setItem('sentinel-theme', theme); } catch(e) {}
+});
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  themeBtn.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+}
+
+// Active nav on scroll
+const sections = document.querySelectorAll('section[id]');
+const navItems = document.querySelectorAll('.nav-item[href^="#"]');
+function updateNav() {
+  let current = '';
+  sections.forEach(s => {
+    if (s.getBoundingClientRect().top < 120) current = s.id;
+  });
+  navItems.forEach(n => {
+    n.classList.toggle('active', n.getAttribute('href') === '#' + current);
+  });
+}
+document.querySelector('.content').addEventListener('scroll', updateNav, { passive: true });
+updateNav();
+</script>
+
+</body></html>
