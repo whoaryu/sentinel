@@ -183,20 +183,31 @@ impl Action {
     }
 }
 
+fn default_notes() -> String {
+    "Estimated by planner".to_string()
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ImpactSummary {
+    #[serde(default)]
     pub file_count: Option<u64>,
+    #[serde(default)]
     pub total_size_mb: Option<f64>,
+    #[serde(default)]
     pub reversible: bool,
+    #[serde(default = "default_notes")]
     pub notes: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ActionPlan {
+    #[serde(default = "uuid::Uuid::new_v4")]
     pub id: Uuid,
+    #[serde(default)]
     pub original_request: String,
     pub actions: Vec<Action>,
     pub estimated_impact: ImpactSummary,
+    #[serde(default = "chrono::Utc::now")]
     pub created_at: DateTime<Utc>,
 }
 

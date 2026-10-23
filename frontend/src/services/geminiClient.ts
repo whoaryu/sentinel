@@ -56,69 +56,62 @@ Allowed Action types:
 CRITICAL RULES:
 - Never emit raw shell commands.
 - Paths must be standard (e.g. ~/Downloads, C:\\Users\\... or /home/...).
-- For queries asking to "show", "find", or "inspect files older than X", use DeleteFilesMatching (which defaults to simulation/dry-run review) or FindLargeFiles.
+- For queries asking to "show", "find", "list", or "inspect" files by size: use FindLargeFiles with an appropriate min_size_mb.
+- For queries asking to "show", "find", "list", or "audit" files by age/date: use DeleteFilesMatching with appropriate older_than_days.
+- For queries asking to "list processes" or "show running processes": use ListRunningProcesses.
 - If the user specifies "1 year", calculate older_than_days = 365.
+- Output ONLY raw JSON. No markdown, no code fences.
 `;
+
+// Groq API key (free tier — fast open source models)
+const GROQ_API_KEY = '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';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'openai/gpt-oss-20b';
 
 export async function callGeminiDirect(
   prompt: string,
-  apiKey: string,
-  preferredModel = 'gemini-1.5-flash'
+  apiKey?: string,
+  preferredModel?: string
 ): Promise<LlmResponse | null> {
-  if (!apiKey || !apiKey.trim()) return null;
-
-  const modelsToTry = [preferredModel];
-  for (const candidate of ['gemini-1.5-flash', 'gemini-2.0-flash']) {
-    if (!modelsToTry.includes(candidate)) {
-      modelsToTry.push(candidate);
-    }
-  }
-  modelsToTry.splice(2);
+  const activeKey = (apiKey && apiKey.trim().startsWith('gsk_')) ? apiKey.trim() : GROQ_API_KEY;
+  const activeModel = preferredModel?.includes('gpt-oss') || preferredModel?.includes('qwen')
+    ? preferredModel
+    : GROQ_MODEL;
 
   const requestBody = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: `Generate a structured Sentinel ActionPlan for: "${prompt}"` }],
-      },
+    model: activeModel,
+    messages: [
+      { role: 'system', content: SYSTEM_INSTRUCTION },
+      { role: 'user', content: `Generate a structured Sentinel ActionPlan for: "${prompt}"` },
     ],
-    systemInstruction: {
-      parts: [{ text: SYSTEM_INSTRUCTION }],
-    },
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
   };
 
-  for (const model of modelsToTry) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${activeKey}`,
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('Groq API error:', res.status, errText);
+      return null;
+    }
 
-      if (!res.ok) {
-        const errText = await res.text();
-        console.warn(`Gemini Direct API error with model ${model}:`, res.status, errText);
-        if (res.status === 404) {
-          // Model unavailable; attempt next model in list
-          continue;
-        }
-        return null;
-      }
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) continue;
+    const data = await res.json();
+    const rawText = data?.choices?.[0]?.message?.content;
+    if (!rawText) return null;
 
     const parsed = JSON.parse(rawText.trim());
 
@@ -139,7 +132,7 @@ export async function callGeminiDirect(
     const planData: ActionPlan = parsed.plan || (parsed.actions ? parsed : null);
     if (planData && Array.isArray(planData.actions)) {
       if (!planData.id) {
-        planData.id = 'gemini-' + Math.random().toString(36).slice(2, 10);
+        planData.id = 'groq-' + Math.random().toString(36).slice(2, 10);
       }
       if (!planData.original_request) {
         planData.original_request = prompt;
@@ -152,7 +145,7 @@ export async function callGeminiDirect(
           file_count: planData.actions.length,
           total_size_mb: 50.0,
           reversible: planData.actions.every((a) => a.type.startsWith('Move')),
-          notes: 'Synthesized dynamically by Google Gemini',
+          notes: 'Synthesized dynamically by Groq Llama 3.3',
         };
       }
 
@@ -163,9 +156,8 @@ export async function callGeminiDirect(
       };
     }
   } catch (err) {
-    console.warn('Direct Gemini call failed, using intelligent heuristic fallback:', err);
+    console.warn('Groq direct call failed, falling back to backend/mock:', err);
   }
-}
 
   return null;
 }

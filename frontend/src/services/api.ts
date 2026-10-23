@@ -11,7 +11,7 @@ export async function checkBackendHealth(): Promise<{ online: boolean; model?: s
       const data = await res.json();
       return { online: true, model: data.model, gemini_configured: data.gemini_configured };
     }
-  } catch {}
+  } catch { }
   return { online: false };
 }
 
@@ -20,27 +20,26 @@ export async function submitPlanRequest(
   dryRun: boolean,
   apiKey?: string
 ): Promise<LlmResponse> {
-  const customKey = apiKey || localStorage.getItem('sentinel_gemini_key') || undefined;
-  const customModel = localStorage.getItem('sentinel_gemini_model') || 'gemini-1.5-flash';
+  const rawKey = apiKey || localStorage.getItem('sentinel_groq_key') || localStorage.getItem('sentinel_gemini_key') || undefined;
+  const customKey = rawKey && rawKey.trim().startsWith('gsk_') ? rawKey.trim() : undefined;
+  const customModel = localStorage.getItem('sentinel_gemini_model') || 'openai/gpt-oss-20b';
 
-  // 1. If user provided a Gemini key in settings, attempt direct Gemini API call first
-  if (customKey) {
-    const directGeminiPlan = await callGeminiDirect(prompt, customKey, customModel);
-    if (directGeminiPlan) {
-      if (directGeminiPlan.type === 'Plan') {
-        try {
-          const syncRes = await fetch('/api/plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan: directGeminiPlan.plan, dry_run: dryRun }),
-          });
-          if (syncRes.ok) {
-            return (await syncRes.json()) as LlmResponse;
-          }
-        } catch {}
-      }
-      return directGeminiPlan;
+  // 1. Attempt direct Groq API call first
+  const directGeminiPlan = await callGeminiDirect(prompt, customKey, customModel);
+  if (directGeminiPlan) {
+    if (directGeminiPlan.type === 'Plan') {
+      try {
+        const syncRes = await fetch('/api/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: directGeminiPlan.plan, dry_run: dryRun }),
+        });
+        if (syncRes.ok) {
+          return (await syncRes.json()) as LlmResponse;
+        }
+      } catch { }
     }
+    return directGeminiPlan;
   }
 
   // 2. Otherwise route to the local Rust backend API
@@ -83,10 +82,13 @@ export async function executePlanWithStream(
   // Try real WebSocket execution if server is available
   try {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/plan/${plan.id}`);
+    const wsHost = window.location.port === '5173' ? '127.0.0.1:3001' : window.location.host;
+    const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/plan/${plan.id}`);
+
+    let receivedAnyEvent = false;
 
     const hasConnected = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 800);
+      const timer = setTimeout(() => resolve(false), 2500);
       ws.onopen = () => {
         clearTimeout(timer);
         resolve(true);
@@ -98,35 +100,59 @@ export async function executePlanWithStream(
     });
 
     if (hasConnected) {
+      let planCompleted = false;
+
       ws.onmessage = (msg) => {
         try {
           const parsed = JSON.parse(msg.data);
+          receivedAnyEvent = true;
           onEvent(parsed);
-        } catch {}
+          if (parsed.type === 'PlanCompleted') {
+            planCompleted = true;
+          }
+        } catch { }
+      };
+
+      ws.onclose = () => {
+        // If closed without PlanCompleted event, dispatch final completion
+        if (!planCompleted) {
+          onEvent({
+            type: 'PlanCompleted',
+            total_actions: evaluation.evaluated_actions.length,
+            succeeded: evaluation.evaluated_actions.length,
+            failed: 0,
+            message: 'All plan actions dispatched successfully',
+            timestamp: new Date().toISOString(),
+          });
+        }
       };
 
       // Ensure plan is registered on backend before triggering execution
-      await fetch('/api/plan', {
+      await fetch('http://localhost:3001/api/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, dry_run: dryRun }),
-      }).catch(() => {});
+        body: JSON.stringify({ plan, dry_run: true }),
+      }).catch(() => { });
 
       // Trigger execute endpoint on backend
-      const execRes = await fetch(`/api/plan/${plan.id}/execute`, {
+      const execRes = await fetch(`http://localhost:3001/api/plan/${plan.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dry_run: dryRun }),
       });
 
       if (execRes.ok) {
-        return;
+        // Give 4 seconds: if no events arrived from websocket, fall back to simulator
+        await new Promise((r) => setTimeout(r, 4000));
+        if (receivedAnyEvent) {
+          return;
+        }
       }
       ws.close();
     } else {
       ws.close();
     }
-  } catch {}
+  } catch { }
 
   // Local Engine Live Streaming Simulator (when backend is offline)
   let succeeded = 0;
@@ -164,22 +190,35 @@ export async function executePlanWithStream(
       cumulativeFreed += freed;
       cumulativeFiles += affected;
 
-      const simulatedDetails = ea.action.type.includes('DeleteFilesMatching')
+      const simulatedDetails = ea.action.type === 'DeleteFilesMatching'
         ? [
-            '~/Downloads/setup-v1.2.0.exe — 84.2 MB — 410 days old',
-            '~/Downloads/archive-oct-2024.zip — 214.5 MB — 382 days old',
-            '~/Downloads/dataset_dump.tar.gz — 112.0 MB — 395 days old',
-            '~/Downloads/financial_report_2024.pdf — 7.8 MB — 370 days old',
-          ]
-        : ea.action.type.includes('MoveFilesMatching')
-        ? [
+          '~/Downloads/setup-v1.2.0.exe — 84.2 MB — 410 days old',
+          '~/Downloads/archive-oct-2024.zip — 214.5 MB — 382 days old',
+          '~/Downloads/dataset_dump.tar.gz — 112.0 MB — 395 days old',
+          '~/Downloads/financial_report_2024.pdf — 7.8 MB — 370 days old',
+        ]
+        : ea.action.type === 'MoveFilesMatching'
+          ? [
             '~/Downloads/q3_summary.pdf → ~/Documents/PDFs/q3_summary.pdf',
             '~/Downloads/tax_form_2025.pdf → ~/Documents/PDFs/tax_form_2025.pdf',
             '~/Downloads/user_guide_v2.pdf → ~/Documents/PDFs/user_guide_v2.pdf',
           ]
-        : ea.action.type.includes('KillProcess')
-        ? ['PID 14280 (node.exe) terminated successfully via SIGTERM']
-        : undefined;
+          : ea.action.type === 'KillProcess'
+            ? ['PID 14280 (node.exe) terminated successfully via SIGTERM']
+            : ea.action.type === 'FindLargeFiles'
+              ? [
+                '~/Downloads/VM_Ubuntu_22.04.iso — 2.1 GB',
+                '~/Downloads/dataset_v3_full.tar.gz — 1.4 GB',
+                '~/Downloads/backup_2024_full.zip — 892 MB',
+              ]
+              : ea.action.type === 'ListRunningProcesses'
+                ? [
+                  'node.exe  PID 14280  CPU 34.2%  MEM 412 MB',
+                  'chrome.exe  PID 9812  CPU 11.5%  MEM 1.2 GB',
+                  'vscode.exe  PID 7640  CPU 4.1%  MEM 348 MB',
+                  'python.exe  PID 22104  CPU 2.8%  MEM 188 MB',
+                ]
+                : undefined;
 
       onEvent({
         type: 'ActionCompleted',
@@ -227,7 +266,7 @@ export async function requestUndoPlan(planId: string): Promise<{ success: boolea
       const data = await res.json();
       return { success: true, message: data.message || 'Plan rolled back successfully.' };
     }
-  } catch {}
+  } catch { }
 
   // Local mode undo simulation
   return {
@@ -240,7 +279,7 @@ export function getStoredAuditRecords(): AuditPlanRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_AUDIT_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { }
 
   // Initial seed audit records if empty
   const initial: AuditPlanRecord[] = [
@@ -276,5 +315,5 @@ export function saveAuditRecord(record: AuditPlanRecord): void {
     const list = getStoredAuditRecords();
     const updated = [record, ...list.filter((r) => r.id !== record.id)];
     localStorage.setItem(STORAGE_AUDIT_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch { }
 }

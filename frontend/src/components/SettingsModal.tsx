@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Cpu, Server, CheckCircle2, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
+import { X, Key, Cpu, CheckCircle2, AlertCircle, Zap, ExternalLink } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -49,15 +49,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="gemini-icon-badge">
-              <Sparkles size={16} />
+            <div className="gemini-icon-badge" style={{ background: 'linear-gradient(135deg, #f97316, #fb923c)' }}>
+              <Zap size={16} />
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg)' }}>
-                Gemini Intelligence Settings
+                Groq Intelligence Settings
               </h3>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
-                Configure Google Generative Language client credentials
+                Configure Groq API credentials — ultra-fast Llama 3.3 inference
               </p>
             </div>
           </div>
@@ -84,22 +84,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="form-group">
             <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Key size={14} /> Google Gemini API Key
+                <Key size={14} /> Groq API Key
               </span>
               <a
-                href="https://aistudio.google.com/app/apikey"
+                href="https://console.groq.com/keys"
                 target="_blank"
                 rel="noreferrer"
                 style={{ fontSize: 11, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
               >
-                Get API Key <ExternalLink size={10} />
+                Get free API Key <ExternalLink size={10} />
               </a>
             </label>
             <div style={{ position: 'relative' }}>
               <input
                 type={showKey ? 'text' : 'password'}
                 className="input-field"
-                placeholder="AIzaSy..."
+                placeholder="gsk_..."
                 value={tempKey}
                 onChange={(e) => setTempKey(e.target.value)}
                 style={{ paddingRight: 64, fontFamily: 'var(--font-mono)' }}
@@ -113,7 +113,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
             <span className="form-hint">
-              Saved locally in browser storage or read from <code>GEMINI_API_KEY</code> in <code>.env</code> on the backend.
+              Saved locally in browser storage or read from <code>GROQ_API_KEY</code> in <code>.env</code> on the backend.
             </span>
           </div>
 
@@ -121,15 +121,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="form-group">
             <label className="form-label">
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Cpu size={14} /> Gemini Model Variant
+                <Cpu size={14} /> Groq Model
               </span>
             </label>
             <div className="model-grid">
               {[
-                { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tag: 'Fastest & Structured (Recommended)' },
-                { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', tag: 'High Throughput' },
-                { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', tag: 'Next-Gen Preview' },
-                { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tag: 'Deep Reasoning' },
+                { id: 'openai/gpt-oss-20b', name: 'OpenAI GPT-OSS 20B', tag: 'Fast reasoning — recommended' },
+                { id: 'openai/gpt-oss-120b', name: 'OpenAI GPT-OSS 120B', tag: 'High capability model' },
+                { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', tag: 'Fast multilingual model' },
               ].map((m) => (
                 <div
                   key={m.id}

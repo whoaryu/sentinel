@@ -119,7 +119,8 @@ export function getPresetPlan(prompt: string): LlmResponse {
     olderDays = 30;
   }
 
-  if (olderDays !== null || lower.includes('older than') || lower.includes('show me') || lower.includes('downloads')) {
+  if (olderDays !== null || lower.includes('older than') || lower.includes('show me') || 
+      (lower.includes('downloads') && (lower.includes('show') || lower.includes('find') || lower.includes('list') || lower.includes('clean') || lower.includes('delete') || lower.includes('purge') || lower.includes('audit')))) {
     const days = olderDays || 90;
     const isInspection = lower.includes('show') || lower.includes('find') || lower.includes('list') || lower.includes('audit');
     

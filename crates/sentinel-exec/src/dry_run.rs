@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::time::SystemTime;
-use chrono::{DateTime, Utc};
 use glob::Pattern;
 use sysinfo::{Pid, System};
 use walkdir::WalkDir;
@@ -224,13 +223,14 @@ impl PrivilegedExecutor for DryRunExecutor {
             }
 
             Action::FindLargeFiles { root, min_size_mb } => {
+                let expanded_root = sentinel_core::expand_tilde_path(root);
                 let min_bytes = min_size_mb * 1024 * 1024;
                 let mut count = 0u64;
                 let mut total_size = 0u64;
                 let mut details = Vec::new();
 
-                if root.exists() {
-                    for entry in WalkDir::new(root).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+                if expanded_root.exists() {
+                    for entry in WalkDir::new(&expanded_root).max_depth(5).into_iter().filter_map(|e| e.ok()) {
                         if entry.file_type().is_file() {
                             if let Ok(meta) = entry.metadata() {
                                 if meta.len() >= min_bytes {
@@ -241,7 +241,7 @@ impl PrivilegedExecutor for DryRunExecutor {
                                         entry.path().display(),
                                         meta.len() as f64 / 1_048_576.0
                                     ));
-                                    if details.len() >= 20 {
+                                    if details.len() >= 50 {
                                         break;
                                     }
                                 }
@@ -250,12 +250,20 @@ impl PrivilegedExecutor for DryRunExecutor {
                     }
                 }
 
+                if count == 0 {
+                    details.push(format!(
+                        "No files >= {} MB found in '{}' (scanned directory successfully)",
+                        min_size_mb,
+                        expanded_root.display()
+                    ));
+                }
+
                 Ok(DryRunResult {
                     message: format!(
                         "Found {} files >= {} MB in '{}' (total {:.2} MB)",
                         count,
                         min_size_mb,
-                        root.display(),
+                        expanded_root.display(),
                         total_size as f64 / 1_048_576.0
                     ),
                     simulated_files_affected: count,
@@ -348,18 +356,33 @@ pub fn scan_matching_files(
         return (0, 0, vec!["Directory does not exist on this system".to_string()]);
     }
 
-    let glob_pat = pattern.and_then(|p| Pattern::new(p).ok());
+    let normalized_pattern = pattern.map(|p| {
+        let p_trim = p.trim();
+        if !p_trim.contains('*') && !p_trim.contains('?') {
+            format!("*{}*", p_trim)
+        } else {
+            p_trim.to_string()
+        }
+    });
+    let glob_pat = normalized_pattern.as_deref().and_then(|p| Pattern::new(p).ok());
+    let match_opts = glob::MatchOptions {
+        case_sensitive: false,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+    };
     let now = SystemTime::now();
+    let mut total_files_scanned = 0u64;
 
     // Limit depth to 3 and cap total scanned files for performance
     for entry in WalkDir::new(&expanded_root).max_depth(3).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
         }
+        total_files_scanned += 1;
 
         let file_name = entry.file_name().to_string_lossy();
         if let Some(ref pat) = glob_pat {
-            if pat.as_str() != "*" && !pat.matches(&file_name) {
+            if pat.as_str() != "*" && !pat.matches_with(&file_name, match_opts) {
                 continue;
             }
         }
@@ -417,6 +440,30 @@ pub fn scan_matching_files(
         if count >= 500 {
             matched.push(format!("... and more (scan capped at 500 matches)"));
             break;
+        }
+    }
+
+    if count == 0 {
+        let pat_desc = pattern.unwrap_or("*");
+        let age_desc = older_than_days
+            .map(|d| format!(" older than {} days", d))
+            .unwrap_or_default();
+        if total_files_scanned > 0 && older_than_days.is_some() {
+            matched.push(format!(
+                "Scanned {} files in '{}' matching '{}' — none were{} (all are newer).",
+                total_files_scanned,
+                expanded_root.display(),
+                pat_desc,
+                age_desc
+            ));
+        } else {
+            matched.push(format!(
+                "No files matching '{}'{} found in '{}' (scanned {} items successfully).",
+                pat_desc,
+                age_desc,
+                expanded_root.display(),
+                total_files_scanned
+            ));
         }
     }
 

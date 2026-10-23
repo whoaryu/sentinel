@@ -2,14 +2,14 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use glob::Pattern;
 use sysinfo::{Pid, System};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use crate::dry_run::{get_trash_directory, scan_matching_files, DryRunExecutor};
+use crate::dry_run::{get_trash_directory, DryRunExecutor};
 use crate::traits::PrivilegedExecutor;
 use crate::types::{ActionResult, DryRunResult, ElevationToken, ExecError};
 use sentinel_core::{Action, PermissionSpec, ProcessTarget};
@@ -513,7 +513,7 @@ impl PrivilegedExecutor for WindowsExecutor {
                 })
             }
 
-            Action::FindLargeFiles { root, min_size_mb } => {
+            Action::FindLargeFiles { .. } => {
                 let dry = self.dry_run.dry_run_action(action)?;
                 Ok(ActionResult {
                     success: true,
@@ -556,7 +556,7 @@ impl PrivilegedExecutor for WindowsExecutor {
                 })
             }
 
-            Action::ListRunningProcesses { filter } => {
+            Action::ListRunningProcesses { .. } => {
                 let dry = self.dry_run.dry_run_action(action)?;
                 Ok(ActionResult {
                     success: true,

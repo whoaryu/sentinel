@@ -19,6 +19,8 @@ frontend/dist/
 .sentinel/
 .sentinel-trash/
 
+.env
+
 # Environment and secrets
 .env
 .env.*

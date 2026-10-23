@@ -92,7 +92,8 @@ fn load_env_file() {
                 if let Some((k, v)) = line.split_once('=') {
                     let key = k.trim();
                     let val = v.trim().trim_matches('"').trim_matches('\'');
-                    if std::env::var(key).is_err() {
+                    // Skip empty values — let the binary decide the default
+                    if !val.is_empty() && std::env::var(key).is_err() {
                         std::env::set_var(key, val);
                     }
                 }
@@ -152,21 +153,24 @@ async fn main() {
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-    tracing::info!("Sentinel API server (powered by Google Gemini) listening on http://{}", addr);
+    tracing::info!("Sentinel API server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn handle_health(State(_state): State<AppState>) -> impl IntoResponse {
-    let has_gemini = std::env::var("GEMINI_API_KEY").is_ok() || std::env::var("GOOGLE_API_KEY").is_ok();
-    let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
+    let has_key = std::env::var("GROQ_API_KEY").map(|v| !v.is_empty()).unwrap_or(false)
+        || std::env::var("GEMINI_API_KEY").map(|v| !v.is_empty()).unwrap_or(false);
+    let model = std::env::var("LLM_MODEL")
+        .or_else(|_| std::env::var("GROQ_MODEL"))
+        .unwrap_or_else(|_| "openai/gpt-oss-20b".to_string());
     Json(serde_json::json!({
         "status": "online",
         "engine": "Sentinel Rust Core v0.1.0",
-        "llm_provider": "Google Gemini",
+        "llm_provider": "Groq",
         "model": model,
-        "gemini_configured": has_gemini,
+        "groq_configured": has_key,
         "platform": std::env::consts::OS,
     }))
 }
@@ -192,8 +196,10 @@ async fn handle_create_plan(
         let plan_id_str = plan.id.to_string();
         state.active_plans.lock().await.insert(plan_id_str.clone(), stored);
 
-        let (tx, _) = broadcast::channel(128);
-        state.plan_channels.lock().await.insert(plan_id_str, tx);
+        // Use entry() so we don't overwrite an existing WS subscription
+        state.plan_channels.lock().await
+            .entry(plan_id_str)
+            .or_insert_with(|| broadcast::channel(256).0);
 
         return Json(serde_json::json!({
             "type": "Plan",
@@ -244,9 +250,10 @@ async fn handle_create_plan(
             let plan_id_str = plan.id.to_string();
             state.active_plans.lock().await.insert(plan_id_str.clone(), stored);
 
-            // Create broadcast channel for this plan ID
-            let (tx, _) = broadcast::channel(128);
-            state.plan_channels.lock().await.insert(plan_id_str, tx);
+            // Use entry() so we don't overwrite an existing WS subscription
+            state.plan_channels.lock().await
+                .entry(plan_id_str)
+                .or_insert_with(|| broadcast::channel(256).0);
 
             Json(serde_json::json!({
                 "type": "Plan",
@@ -295,8 +302,8 @@ async fn handle_execute_plan(
         .unwrap_or(stored.dry_run);
 
     let sender = {
-        let channels = state.plan_channels.lock().await;
-        channels.get(&id).cloned()
+        let mut channels = state.plan_channels.lock().await;
+        Some(channels.entry(id.clone()).or_insert_with(|| broadcast::channel(256).0).clone())
     };
 
     let app_state = state.clone();
@@ -579,6 +586,39 @@ fn generate_heuristic_plan(request: &str) -> LlmResponse {
         });
     }
 
+    if (lower.contains("process") || lower.contains("processes")) && (lower.contains("list") || lower.contains("show") || lower.contains("running")) {
+        return LlmResponse::Plan(ActionPlan {
+            id: Uuid::new_v4(),
+            original_request: request.to_string(),
+            actions: vec![Action::ListRunningProcesses { filter: None }],
+            estimated_impact: ImpactSummary {
+                file_count: None,
+                total_size_mb: None,
+                reversible: true,
+                notes: "Queries running system processes without modifying system state".into(),
+            },
+            created_at: chrono::Utc::now(),
+        });
+    }
+
+    if lower.contains("large") && (lower.contains("file") || lower.contains("find") || lower.contains("show")) {
+        return LlmResponse::Plan(ActionPlan {
+            id: Uuid::new_v4(),
+            original_request: request.to_string(),
+            actions: vec![Action::FindLargeFiles {
+                root: PathBuf::from("~/Downloads"),
+                min_size_mb: 50,
+            }],
+            estimated_impact: ImpactSummary {
+                file_count: Some(5),
+                total_size_mb: Some(450.0),
+                reversible: true,
+                notes: "Scans for large files >= 50 MB in ~/Downloads".into(),
+            },
+            created_at: chrono::Utc::now(),
+        });
+    }
+
     if lower.contains("archive") || lower.contains("compress") {
         return LlmResponse::Plan(ActionPlan {
             id: Uuid::new_v4(),
@@ -645,7 +685,6 @@ fn generate_heuristic_plan(request: &str) -> LlmResponse {
         PathBuf::from("~/Downloads")
     };
 
-    let days = older_days.unwrap_or(90);
     let is_inspection = lower.contains("show")
         || lower.contains("find")
         || lower.contains("list")
@@ -653,22 +692,36 @@ fn generate_heuristic_plan(request: &str) -> LlmResponse {
         || lower.contains("search")
         || lower.contains("check");
 
-    let reason = if is_inspection {
-        format!("Inspect and stage files in {} older than {} days for user review", root.display(), days)
-    } else {
-        format!("Purge files in {} older than {} days to reclaim storage", root.display(), days)
+    // Pattern extraction: e.g. "show xyz files" -> pattern "*xyz*"
+    let mut pattern = Some("*".to_string());
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    for (i, &w) in words.iter().enumerate() {
+        if (w == "show" || w == "find" || w == "list") && i + 1 < words.len() {
+            let next_word = words[i + 1].trim_matches(['\'', '"', '.']);
+            if next_word != "files" && next_word != "all" && next_word != "my" && next_word != "the" && next_word != "running" && next_word != "large" {
+                pattern = Some(format!("*{}*", next_word));
+                break;
+            }
+        }
+    }
+
+    let reason = match (is_inspection, older_days) {
+        (true, Some(days)) => format!("Inspect and stage files in {} older than {} days matching {:?}", root.display(), days, pattern.as_deref().unwrap_or("*")),
+        (true, None) => format!("Inspect and stage files in {} matching {:?}", root.display(), pattern.as_deref().unwrap_or("*")),
+        (false, Some(days)) => format!("Purge files in {} older than {} days matching {:?}", root.display(), days, pattern.as_deref().unwrap_or("*")),
+        (false, None) => format!("Clean files in {} matching {:?}", root.display(), pattern.as_deref().unwrap_or("*")),
     };
 
-    let file_count = if days >= 365 { 8 } else { 14 };
-    let size_mb = if days >= 365 { 418.5 } else { 348.2 };
+    let file_count = if older_days.map(|d| d >= 365).unwrap_or(false) { 8 } else { 14 };
+    let size_mb = if older_days.map(|d| d >= 365).unwrap_or(false) { 418.5 } else { 348.2 };
 
     LlmResponse::Plan(ActionPlan {
         id: Uuid::new_v4(),
         original_request: request.to_string(),
         actions: vec![Action::DeleteFilesMatching {
             root: root.clone(),
-            older_than_days: Some(days),
-            pattern: Some("*".into()),
+            older_than_days: older_days,
+            pattern,
             reason,
         }],
         estimated_impact: ImpactSummary {
@@ -676,8 +729,8 @@ fn generate_heuristic_plan(request: &str) -> LlmResponse {
             total_size_mb: Some(size_mb),
             reversible: false,
             notes: format!(
-                "{} files older than {} days in {}. In Simulation mode, disk state remains untouched.",
-                file_count, days, root.display()
+                "Matching files in {}. In Simulation mode, disk state remains untouched.",
+                root.display()
             ),
         },
         created_at: chrono::Utc::now(),

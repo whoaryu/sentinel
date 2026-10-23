@@ -8,6 +8,7 @@ import { ExecutionScreen } from './screens/ExecutionScreen';
 import { AuditScreen } from './screens/AuditScreen';
 import { ActionRuntimeState, EvaluatedPlan, ExecutionEvent, LlmResponse } from './types/sentinel';
 import { submitPlanRequest, executePlanWithStream, checkBackendHealth, requestUndoPlan } from './services/api';
+import { evaluatePlan } from './engine/policyEngine';
 
 export const App: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<NavScreen>('input');
@@ -18,7 +19,7 @@ export const App: React.FC = () => {
 
   // Gemini Settings state
   const [geminiKey, setGeminiKey] = useState<string>(() => localStorage.getItem('sentinel_gemini_key') || '');
-  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('sentinel_gemini_model') || 'gemini-1.5-flash');
+  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('sentinel_gemini_model') || 'gemini-flash-latest');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [backendOnline, setBackendOnline] = useState(false);
 
@@ -66,12 +67,9 @@ export const App: React.FC = () => {
         setClarificationQuestion(response.question);
         setCurrentScreen('input');
       } else if (response.type === 'Plan') {
-        // If the backend returns wrapped evaluation or direct plan
-        const planToSet = (response as any).evaluation || {
-          plan: response.plan,
-          evaluated_actions: [],
-          overall_decision: { status: 'Allow' },
-        };
+        // Use embedded evaluation if available (from backend or direct Gemini path),
+        // otherwise run the local policy engine to build a full EvaluatedPlan
+        const planToSet: EvaluatedPlan = (response as any).evaluation ?? evaluatePlan(response.plan);
         setCurrentPlan(planToSet);
         setCurrentScreen('review');
       } else if (response.type === 'CannotDo') {

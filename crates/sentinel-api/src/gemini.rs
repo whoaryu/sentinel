@@ -5,58 +5,47 @@ use chrono::Utc;
 use sentinel_core::{Action, ActionPlan, ImpactSummary, LlmResponse};
 use sentinel_core::schema::llm_response_schema_json;
 
-#[derive(Serialize)]
-struct GeminiPart {
-    text: String,
-}
+// ── OpenAI-compatible request structures (Groq uses this format) ─────────────
 
 #[derive(Serialize)]
-struct GeminiContent {
+struct ChatMessage {
     role: String,
-    parts: Vec<GeminiPart>,
+    content: String,
 }
 
 #[derive(Serialize)]
-struct GeminiSystemInstruction {
-    parts: Vec<GeminiPart>,
+struct ResponseFormat {
+    #[serde(rename = "type")]
+    format_type: String,
 }
 
 #[derive(Serialize)]
-struct GeminiGenerationConfig {
-    #[serde(rename = "responseMimeType")]
-    response_mime_type: String,
+struct ChatRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
     temperature: f32,
+    response_format: ResponseFormat,
 }
 
-#[derive(Serialize)]
-struct GeminiRequest {
-    contents: Vec<GeminiContent>,
-    #[serde(rename = "systemInstruction")]
-    system_instruction: GeminiSystemInstruction,
-    #[serde(rename = "generationConfig")]
-    generation_config: GeminiGenerationConfig,
+// ── OpenAI-compatible response structures ────────────────────────────────────
+
+#[derive(Deserialize, Debug)]
+struct ChatChoice {
+    message: Option<ChatMessageContent>,
 }
 
 #[derive(Deserialize, Debug)]
-struct GeminiCandidatePart {
-    text: Option<String>,
+struct ChatMessageContent {
+    content: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
-struct GeminiCandidateContent {
-    parts: Option<Vec<GeminiCandidatePart>>,
-}
-
-#[derive(Deserialize, Debug)]
-struct GeminiCandidate {
-    content: Option<GeminiCandidateContent>,
-}
-
-#[derive(Deserialize, Debug)]
-struct GeminiResponse {
-    candidates: Option<Vec<GeminiCandidate>>,
+struct ChatResponse {
+    choices: Option<Vec<ChatChoice>>,
     error: Option<Value>,
 }
+
+// ── Planner ──────────────────────────────────────────────────────────────────
 
 pub struct GeminiPlanner {
     client: reqwest::Client,
@@ -70,7 +59,7 @@ impl GeminiPlanner {
         let schema_hint = serde_json::to_string_pretty(&schema_json).unwrap_or_default();
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap_or_default(),
             system_prompt,
@@ -79,107 +68,88 @@ impl GeminiPlanner {
     }
 
     pub async fn plan(&self, user_request: &str, custom_api_key: Option<&str>) -> Result<LlmResponse, String> {
+        // Key resolution: UI input (if valid Groq gsk_ key) → GROQ_API_KEY from .env → other fallbacks
         let api_key = custom_api_key
-            .map(|s| s.to_string())
-            .or_else(|| std::env::var("GEMINI_API_KEY").ok())
-            .or_else(|| std::env::var("GOOGLE_API_KEY").ok());
+            .map(|s| s.trim().to_string())
+            .filter(|s| s.starts_with("gsk_"))
+            .or_else(|| std::env::var("GROQ_API_KEY").ok().filter(|s| !s.is_empty()))
+            .or_else(|| custom_api_key.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+            .ok_or_else(|| "No LLM API key configured (set GROQ_API_KEY in .env or via UI Settings)".to_string())?;
 
-        let api_key = match api_key {
-            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
-            _ => {
-                return Err("GEMINI_API_KEY is not set. Using local engine fallback.".to_string());
-            }
-        };
+        let model = std::env::var("LLM_MODEL")
+            .or_else(|_| std::env::var("GROQ_MODEL"))
+            .unwrap_or_else(|_| "openai/gpt-oss-20b".to_string());
 
-        let preferred_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
-        let mut models_to_try = vec![preferred_model];
-        for candidate in &["gemini-1.5-flash", "gemini-2.0-flash"] {
-            if !models_to_try.iter().any(|m| m == candidate) {
-                models_to_try.push(candidate.to_string());
-            }
-        }
-        models_to_try.truncate(2);
+        let url = "https://api.groq.com/openai/v1/chat/completions";
 
         let full_system = format!(
-            "{}\n\nIMPORTANT: You MUST respond strictly in valid JSON adhering to the following LlmResponse schema:\n{}\n\nAllowed Action types:\n- DeleteFile {{ path, reason }}\n- DeleteFilesMatching {{ root, older_than_days, pattern, reason }}\n- MoveFile {{ from, to, reason }}\n- MoveFilesMatching {{ root, destination, pattern, older_than_days, reason }}\n- ChangePermissions {{ path, mode, recursive, reason }}\n- KillProcess {{ pid_or_name, signal, reason }}\n- CompressDirectory {{ path, output, delete_source, reason }}\n- FindLargeFiles {{ root, min_size_mb }}\n- EmptyTrash\n- ListRunningProcesses {{ filter }}\n\nNEVER emit any RunShellCommand. If ambiguous, return NeedsClarification. If impossible, return CannotDo.",
+            "{}\n\nIMPORTANT: You MUST respond strictly in valid JSON matching the LlmResponse schema below.\nNEVER wrap in markdown code fences. Output ONLY raw JSON.\n\nSchema:\n{}\n\nAllowed Action types:\n- DeleteFile {{ path, reason }}\n- DeleteFilesMatching {{ root, older_than_days, pattern, reason }}\n- MoveFile {{ from, to, reason }}\n- MoveFilesMatching {{ root, destination, pattern, older_than_days, reason }}\n- ChangePermissions {{ path, mode, recursive, reason }}\n- KillProcess {{ pid_or_name, signal, reason }}\n- CompressDirectory {{ path, output, delete_source, reason }}\n- FindLargeFiles {{ root, min_size_mb }}\n- EmptyTrash\n- ListRunningProcesses {{ filter }}\n\nRules for queries:\n- Paths must be absolute or use tilde (e.g. ~/Downloads, ~/Desktop, ~/Documents). Never use '.' as root.\n- For requests asking to show, list, find, or audit files (e.g. 'show xyz files'): emit DeleteFilesMatching with the appropriate pattern (e.g. '*xyz*' or '*.xyz') and older_than_days = null unless age is explicitly requested.\n- For requests asking to show or list running processes: emit ListRunningProcesses.\n- For requests asking to show or list large files: emit FindLargeFiles.\n- NEVER emit RunShellCommand. If ambiguous, return NeedsClarification. If impossible, return CannotDo.",
             self.system_prompt, self.schema_hint
         );
 
-        let body = GeminiRequest {
-            contents: vec![GeminiContent {
-                role: "user".to_string(),
-                parts: vec![GeminiPart {
-                    text: format!("Generate an ActionPlan for the following request: \"{}\"", user_request),
-                }],
-            }],
-            system_instruction: GeminiSystemInstruction {
-                parts: vec![GeminiPart { text: full_system }],
-            },
-            generation_config: GeminiGenerationConfig {
-                response_mime_type: "application/json".to_string(),
-                temperature: 0.1,
-            },
+        let body = ChatRequest {
+            model: model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: full_system,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: format!("Generate an ActionPlan for: \"{}\"", user_request),
+                },
+            ],
+            temperature: 0.1,
+            response_format: ResponseFormat { format_type: "json_object".to_string() },
         };
 
-        let mut last_error = String::new();
+        let res = match self.client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Network error connecting to Groq API: {}", e)),
+        };
 
-        for target_model in &models_to_try {
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-                target_model, api_key
-            );
-
-            let res = match self.client.post(&url).json(&body).send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    last_error = format!("Network error connecting to Gemini API: {}", e);
-                    continue;
-                }
-            };
-
-            if !res.status().is_success() {
-                let status = res.status();
-                let err_text = res.text().await.unwrap_or_default();
-                last_error = format!("Gemini API ({}) returned error HTTP {}: {}", target_model, status, err_text);
-
-                // If model not found (404), try next model in fallback list
-                if status == reqwest::StatusCode::NOT_FOUND {
-                    tracing::warn!("Model '{}' not available (404); attempting next candidate model...", target_model);
-                    continue;
-                }
-                return Err(last_error);
-            }
-
-            let gemini_resp: GeminiResponse = res
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse Gemini response envelope: {}", e))?;
-
-            if let Some(err) = gemini_resp.error {
-                last_error = format!("Gemini error: {}", err);
-                continue;
-            }
-
-            let raw_text = gemini_resp
-                .candidates
-                .as_ref()
-                .and_then(|c| c.first())
-                .and_then(|c| c.content.as_ref())
-                .and_then(|c| c.parts.as_ref())
-                .and_then(|p| p.first())
-                .and_then(|p| p.text.as_ref())
-                .ok_or_else(|| "Gemini returned empty candidate content".to_string())?;
-
-            tracing::info!("Successfully synthesized ActionPlan using Google Gemini model: {}", target_model);
-            return parse_gemini_json(raw_text, user_request);
+        if !res.status().is_success() {
+            let status = res.status();
+            let err_text = res.text().await.unwrap_or_default();
+            return Err(format!("Groq API returned HTTP {}: {}", status, err_text));
         }
 
-        Err(last_error)
+        let chat_resp: ChatResponse = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Groq response envelope: {}", e))?;
+
+        if let Some(err) = chat_resp.error {
+            return Err(format!("Groq API error: {}", err));
+        }
+
+        let raw_text = chat_resp
+            .choices
+            .as_ref()
+            .and_then(|c| c.first())
+            .and_then(|c| c.message.as_ref())
+            .and_then(|m| m.content.as_ref())
+            .ok_or_else(|| "Groq returned empty response content".to_string())?;
+
+        tracing::info!("Successfully synthesized ActionPlan via Groq ({})", model);
+        parse_llm_json(raw_text, user_request)
     }
 }
 
-fn parse_gemini_json(json_str: &str, original_request: &str) -> Result<LlmResponse, String> {
-    let clean = json_str.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+fn parse_llm_json(json_str: &str, original_request: &str) -> Result<LlmResponse, String> {
+    let clean = json_str
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
 
     // 1. Try parsing directly into LlmResponse
     if let Ok(resp) = serde_json::from_str::<LlmResponse>(clean) {
@@ -201,22 +171,43 @@ fn parse_gemini_json(json_str: &str, original_request: &str) -> Result<LlmRespon
     if let Ok(val) = serde_json::from_str::<Value>(clean) {
         if let Some(t) = val.get("type").and_then(|t| t.as_str()) {
             if t == "NeedsClarification" {
-                let question = val.get("question").and_then(|q| q.as_str()).unwrap_or("Could you clarify the exact criteria?");
+                let question = val.get("question").and_then(|q| q.as_str())
+                    .unwrap_or("Could you clarify the exact criteria?");
                 return Ok(LlmResponse::NeedsClarification { question: question.to_string() });
             }
             if t == "CannotDo" {
-                let reason = val.get("reason").and_then(|r| r.as_str()).unwrap_or("This operation is not supported by Sentinel's closed action model.");
+                let reason = val.get("reason").and_then(|r| r.as_str())
+                    .unwrap_or("This operation is not supported by Sentinel's closed action model.");
                 return Ok(LlmResponse::CannotDo { reason: reason.to_string() });
             }
             if t == "Plan" {
-                if let Some(plan_val) = val.get("plan") {
-                    if let Ok(mut plan) = serde_json::from_value::<ActionPlan>(plan_val.clone()) {
-                        if plan.id.is_nil() {
-                            plan.id = Uuid::new_v4();
-                        }
-                        if plan.original_request.is_empty() {
-                            plan.original_request = original_request.to_string();
-                        }
+                let plan_val = val.get("plan").unwrap_or(&val);
+                if let Ok(mut plan) = serde_json::from_value::<ActionPlan>(plan_val.clone()) {
+                    if plan.id.is_nil() {
+                        plan.id = Uuid::new_v4();
+                    }
+                    if plan.original_request.is_empty() {
+                        plan.original_request = original_request.to_string();
+                    }
+                    return Ok(LlmResponse::Plan(plan));
+                }
+
+                // If ActionPlan direct deserialization failed, extract actions manually
+                if let Some(actions_val) = plan_val.get("actions") {
+                    if let Ok(actions) = serde_json::from_value::<Vec<Action>>(actions_val.clone()) {
+                        let impact_val = plan_val.get("estimated_impact").unwrap_or(&val);
+                        let plan = ActionPlan {
+                            id: Uuid::new_v4(),
+                            original_request: original_request.to_string(),
+                            actions,
+                            estimated_impact: ImpactSummary {
+                                file_count: impact_val.get("file_count").and_then(|i| i.as_u64()),
+                                total_size_mb: impact_val.get("total_size_mb").and_then(|i| i.as_f64()),
+                                reversible: impact_val.get("reversible").and_then(|i| i.as_bool()).unwrap_or(true),
+                                notes: impact_val.get("notes").and_then(|i| i.as_str()).unwrap_or("Estimated by LLM").to_string(),
+                            },
+                            created_at: Utc::now(),
+                        };
                         return Ok(LlmResponse::Plan(plan));
                     }
                 }
@@ -224,7 +215,8 @@ fn parse_gemini_json(json_str: &str, original_request: &str) -> Result<LlmRespon
         }
 
         // If it contains "actions", try to reconstruct ActionPlan
-        if let Some(actions_val) = val.get("actions") {
+        let actions_val = val.get("actions").or_else(|| val.get("plan").and_then(|p| p.get("actions")));
+        if let Some(actions_val) = actions_val {
             if let Ok(actions) = serde_json::from_value::<Vec<Action>>(actions_val.clone()) {
                 let plan = ActionPlan {
                     id: Uuid::new_v4(),
@@ -234,7 +226,7 @@ fn parse_gemini_json(json_str: &str, original_request: &str) -> Result<LlmRespon
                         file_count: val.get("estimated_impact").and_then(|i| i.get("file_count")).and_then(|c| c.as_u64()),
                         total_size_mb: val.get("estimated_impact").and_then(|i| i.get("total_size_mb")).and_then(|s| s.as_f64()),
                         reversible: val.get("estimated_impact").and_then(|i| i.get("reversible")).and_then(|r| r.as_bool()).unwrap_or(false),
-                        notes: val.get("estimated_impact").and_then(|i| i.get("notes")).and_then(|n| n.as_str()).unwrap_or("Estimated by Gemini").to_string(),
+                        notes: val.get("estimated_impact").and_then(|i| i.get("notes")).and_then(|n| n.as_str()).unwrap_or("Estimated by LLM").to_string(),
                     },
                     created_at: Utc::now(),
                 };
@@ -243,5 +235,5 @@ fn parse_gemini_json(json_str: &str, original_request: &str) -> Result<LlmRespon
         }
     }
 
-    Err(format!("Could not deserialize Gemini JSON into ActionPlan or LlmResponse: {}", clean))
+    Err(format!("Could not deserialize LLM JSON into ActionPlan or LlmResponse: {}", clean))
 }
