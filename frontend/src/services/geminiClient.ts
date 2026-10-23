@@ -64,7 +64,7 @@ CRITICAL RULES:
 `;
 
 // Groq API key (free tier — fast open source models)
-const GROQ_API_KEY = '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';
+const GROQ_API_KEY = '';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'openai/gpt-oss-20b';
 
