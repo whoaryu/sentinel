@@ -350,12 +350,6 @@ impl PrivilegedExecutor for WindowsExecutor {
                     )));
                 }
 
-                // On Windows: update readonly attribute or ACLs
-                let is_readonly = match mode {
-                    PermissionSpec::Text(s) => s.to_lowercase().contains("readonly"),
-                    PermissionSpec::Octal(o) => (o & 0o200) == 0,
-                };
-
                 let mut affected = 0u64;
                 let targets: Vec<PathBuf> = if *recursive && path.is_dir() {
                     WalkDir::new(path)
@@ -367,12 +361,44 @@ impl PrivilegedExecutor for WindowsExecutor {
                     vec![path.clone()]
                 };
 
-                for p in targets {
-                    if let Ok(meta) = fs::metadata(&p) {
-                        let mut perms = meta.permissions();
-                        perms.set_readonly(is_readonly);
-                        if fs::set_permissions(&p, perms).is_ok() {
+                let mode_desc = match mode {
+                    PermissionSpec::Text(s) => s.clone(),
+                    PermissionSpec::Octal(o) => format!("{:o}", o),
+                };
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode_num = match mode {
+                        PermissionSpec::Octal(o) => *o,
+                        PermissionSpec::Text(s) => match s.as_str() {
+                            "rwxr-xr-x" => 0o755,
+                            "rw-r--r--" => 0o644,
+                            "rwx------" => 0o700,
+                            "rw-------" => 0o600,
+                            "rwxrwxrwx" => 0o777,
+                            _ => 0o644,
+                        },
+                    };
+                    for p in targets {
+                        if fs::set_permissions(&p, fs::Permissions::from_mode(mode_num)).is_ok() {
                             affected += 1;
+                        }
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    let is_readonly = match mode {
+                        PermissionSpec::Text(s) => s.to_lowercase().contains("readonly"),
+                        PermissionSpec::Octal(o) => (o & 0o200) == 0,
+                    };
+                    for p in targets {
+                        if let Ok(meta) = fs::metadata(&p) {
+                            let mut perms = meta.permissions();
+                            perms.set_readonly(is_readonly);
+                            if fs::set_permissions(&p, perms).is_ok() {
+                                affected += 1;
+                            }
                         }
                     }
                 }
@@ -380,16 +406,16 @@ impl PrivilegedExecutor for WindowsExecutor {
                 Ok(ActionResult {
                     success: true,
                     message: format!(
-                        "Updated permissions for {} file(s) at '{}' (read-only: {}). Reason: {}",
+                        "Updated permissions for {} file(s) at '{}' to mode '{}'. Reason: {}",
                         affected,
                         path.display(),
-                        is_readonly,
+                        mode_desc,
                         reason
                     ),
                     files_affected: affected,
                     bytes_freed: 0,
                     undo_action: None,
-                    details: vec![format!("Target: {}, Readonly: {}", path.display(), is_readonly)],
+                    details: vec![format!("Target: {}, Mode: {}", path.display(), mode_desc)],
                 })
             }
 
@@ -575,12 +601,41 @@ impl PrivilegedExecutor for WindowsExecutor {
     }
 
     fn elevate(&self) -> Result<ElevationToken, ExecError> {
-        // Query current privilege on Windows
-        // In Sentinel architecture, elevation is handled per-batch via ShellExecuteW "runas" helper
-        Ok(ElevationToken {
-            token: "windows-uac-session-token".to_string(),
-            elevated: true,
-            mechanism: "Windows UAC (ShellExecuteW runas)".to_string(),
-        })
+        #[cfg(target_os = "android")]
+        {
+            let is_root = std::process::Command::new("id")
+                .arg("-u")
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+                .unwrap_or(false);
+            Ok(ElevationToken {
+                token: "android-su-session-token".to_string(),
+                elevated: is_root,
+                mechanism: "Android root (su / Termux)".to_string(),
+            })
+        }
+        #[cfg(all(unix, not(target_os = "android")))]
+        {
+            let is_root = std::process::Command::new("id")
+                .arg("-u")
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+                .unwrap_or(false);
+            Ok(ElevationToken {
+                token: "linux-sudo-session-token".to_string(),
+                elevated: is_root,
+                mechanism: "Linux sudo / PolicyKit".to_string(),
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            Ok(ElevationToken {
+                token: "windows-uac-session-token".to_string(),
+                elevated: true,
+                mechanism: "Windows UAC (ShellExecuteW runas)".to_string(),
+            })
+        }
     }
 }
+
+pub type NativeExecutor = WindowsExecutor;

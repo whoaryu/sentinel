@@ -21,6 +21,13 @@ impl Default for PolicyConfig {
         if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
             allowed_roots.push(PathBuf::from(home));
         }
+        // Support Android storage roots (Termux, /sdcard, emulated)
+        for android_root in &["/sdcard", "/storage/emulated/0", "/data/data/com.termux/files/home"] {
+            let p = PathBuf::from(android_root);
+            if p.exists() && !allowed_roots.contains(&p) {
+                allowed_roots.push(p);
+            }
+        }
 
         Self {
             allowed_roots,
@@ -29,6 +36,7 @@ impl Default for PolicyConfig {
             min_path_components: 3,
             min_safe_pid: 100,
             protected_processes: vec![
+                // Windows critical processes
                 "system".to_string(),
                 "system idle process".to_string(),
                 "csrss.exe".to_string(),
@@ -43,10 +51,23 @@ impl Default for PolicyConfig {
                 "wininit".to_string(),
                 "svchost.exe".to_string(),
                 "svchost".to_string(),
+                // Linux & POSIX critical processes
                 "init".to_string(),
                 "systemd".to_string(),
                 "launchd".to_string(),
                 "kernel".to_string(),
+                "kthreadd".to_string(),
+                "dbus-daemon".to_string(),
+                "sshd".to_string(),
+                // Android critical processes
+                "zygote".to_string(),
+                "zygote64".to_string(),
+                "system_server".to_string(),
+                "surfaceflinger".to_string(),
+                "vold".to_string(),
+                "netd".to_string(),
+                "servicemanager".to_string(),
+                "adbd".to_string(),
             ],
         }
     }

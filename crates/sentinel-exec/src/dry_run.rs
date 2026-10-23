@@ -337,6 +337,10 @@ impl PrivilegedExecutor for DryRunExecutor {
 pub fn get_trash_directory() -> std::path::PathBuf {
     if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
         std::path::PathBuf::from(home).join(".sentinel-trash")
+    } else if std::path::Path::new("/data/data/com.termux/files/home").exists() {
+        std::path::PathBuf::from("/data/data/com.termux/files/home/.sentinel-trash")
+    } else if std::path::Path::new("/sdcard").exists() {
+        std::path::PathBuf::from("/sdcard/.sentinel-trash")
     } else {
         std::env::temp_dir().join(".sentinel-trash")
     }

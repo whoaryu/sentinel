@@ -8,4 +8,4 @@ pub use audit::{AuditActionRecord, AuditLog, AuditPlanRecord, AuditPlanWithActio
 pub use dry_run::DryRunExecutor;
 pub use traits::PrivilegedExecutor;
 pub use types::{ActionResult, DryRunResult, ElevationToken, ExecError};
-pub use windows::WindowsExecutor;
+pub use windows::{NativeExecutor, WindowsExecutor};
